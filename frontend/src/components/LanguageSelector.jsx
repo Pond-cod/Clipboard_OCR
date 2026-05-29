@@ -1,7 +1,18 @@
-import React from 'react';
-import { Globe, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { Globe, Check, Sliders, ChevronDown, ChevronUp, Zap, HelpCircle } from 'lucide-react';
 
-export default function LanguageSelector({ selectedLanguages, onChange }) {
+export default function LanguageSelector({
+  selectedLanguages,
+  onChange,
+  preprocess,
+  onPreprocessChange,
+  thresholdLevel,
+  onThresholdChange,
+  psm,
+  onPsmChange
+}) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   // Available OCR languages
   const options = [
     { code: 'eng', name: 'English', desc: 'Latin characters, symbols, and code', icon: '🇬🇧' },
@@ -9,7 +20,6 @@ export default function LanguageSelector({ selectedLanguages, onChange }) {
   ];
 
   const handleToggle = (code) => {
-    // If clicking a language, ensure at least one language remains selected
     if (selectedLanguages.includes(code)) {
       if (selectedLanguages.length > 1) {
         onChange(selectedLanguages.filter(lang => lang !== code));
@@ -19,18 +29,44 @@ export default function LanguageSelector({ selectedLanguages, onChange }) {
     }
   };
 
+  const psmOptions = [
+    { code: '3', name: 'Automatic Layout (Default)', desc: 'Fully automatic page segmentation' },
+    { code: '6', name: 'Single Text Block', desc: 'Assumes a single uniform block of text' },
+    { code: '7', name: 'Single Text Line', desc: 'Treats the image as a single horizontal line' },
+    { code: '8', name: 'Single Word', desc: 'Treats the image as a single word' }
+  ];
+
   return (
-    <div className="glass-panel p-6 rounded-3xl mb-6 shadow-2xl shadow-black/30">
-      <div className="flex items-center gap-2 mb-4">
-        <Globe className="w-5 h-5 text-brand-400" />
-        <h3 className="font-display font-semibold text-white">OCR Engine Language</h3>
+    <div className="glass-panel p-6 rounded-3xl mb-6 shadow-2xl shadow-black/30 transition-all duration-300">
+      {/* Top Section: Languages selection */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-2">
+          <Globe className="w-5 h-5 text-brand-400" />
+          <h3 className="font-display font-semibold text-white">OCR Engine Language & Tuning</h3>
+        </div>
+
+        {/* Advanced Expander Button */}
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all duration-200 ${
+            showAdvanced 
+              ? 'bg-brand-500/10 border-brand-500/30 text-brand-300' 
+              : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+          }`}
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span>AI Enhancements & Precision Tuning</span>
+          {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
       </div>
       
-      <p className="text-slate-400 text-xs mb-4 leading-relaxed">
-        Select one or both languages depending on the target image. Using both languages allows mixed-text extraction, but single selection may improve recognition accuracy.
+      <p className="text-slate-400 text-xs mb-4 leading-relaxed max-w-3xl">
+        Adjust language options depending on the target image. Using both languages allows mixed-text extraction. To maximize accuracy, toggle advanced image processing enhancements below.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Language Button Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         {options.map((option) => {
           const isSelected = selectedLanguages.includes(option.code);
           return (
@@ -74,6 +110,90 @@ export default function LanguageSelector({ selectedLanguages, onChange }) {
           );
         })}
       </div>
+
+      {/* Collapsible Advanced Fine-Tuning Panel */}
+      {showAdvanced && (
+        <div className="mt-4 pt-4 border-t border-slate-800/80 animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-6 bg-slate-950/20 p-5 rounded-2xl border border-slate-900">
+          
+          {/* Col 1: Sharp Image Preprocessor Control */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-semibold text-white">AI Image Pre-Processing</span>
+              </div>
+              
+              {/* Custom Switch Switch */}
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={preprocess}
+                  onChange={(e) => onPreprocessChange(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500"></div>
+              </label>
+            </div>
+            
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Auto-converts image to grayscale, applies a smart Lanczos3 2x scale to boost resolution (DPI), and filters colors into high-contrast black and white for near 100% character detection.
+            </p>
+
+            {preprocess && (
+              <div className="mt-2 p-3 bg-slate-950/40 rounded-xl border border-slate-900 flex flex-col gap-2">
+                <div className="flex justify-between text-xs font-medium">
+                  <span className="text-slate-400">Contrast Threshold Level:</span>
+                  <span className="text-brand-300 font-bold font-mono">{thresholdLevel}</span>
+                </div>
+                <input
+                  type="range"
+                  min="100"
+                  max="180"
+                  value={thresholdLevel}
+                  onChange={(e) => onThresholdChange(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                />
+                <span className="text-[10px] text-slate-500">
+                  Tip: Use 120-140 for thin/standard texts, 140-160 for thick/glow texts.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Col 2: Tesseract Page Segmentation Mode (PSM) */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-indigo-400" />
+              <span className="text-sm font-semibold text-white">Page Layout Segmentation (PSM)</span>
+            </div>
+            
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Instruct the OCR engine how to parse layout geometry. Matching this to your snippet structure drastically reduces character errors.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+              {psmOptions.map((opt) => {
+                const isActive = psm === opt.code;
+                return (
+                  <button
+                    key={opt.code}
+                    type="button"
+                    onClick={() => onPsmChange(opt.code)}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                      isActive 
+                        ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-300'
+                        : 'bg-slate-950/20 border-slate-900 text-slate-400 hover:border-slate-800 hover:text-slate-300'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs">{opt.name}</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 truncate">{opt.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

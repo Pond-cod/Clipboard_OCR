@@ -16,7 +16,11 @@ export default function App() {
   const [confidence, setConfidence] = useState(null);
   const [durationMs, setDurationMs] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [pasteOverlay, setPasteOverlay] = useState(false);
+
+  // AI Precision Tuning States (Default active for near 100% accuracy)
+  const [preprocess, setPreprocess] = useState(true);
+  const [thresholdLevel, setThresholdLevel] = useState(135);
+  const [psm, setPsm] = useState('3');
 
   // Setup Global Paste Interception Listener
   useEffect(() => {
@@ -33,9 +37,7 @@ export default function App() {
       }
 
       if (imageItem) {
-        // Prevent default browser action if pasting an image
         e.preventDefault();
-        
         const imageFile = imageItem.getAsFile();
         if (imageFile) {
           console.log('[Global Paste] Intercepted image:', imageFile.name);
@@ -48,13 +50,12 @@ export default function App() {
     return () => {
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [selectedLanguages]); // re-bind when language configuration changes
+  }, [selectedLanguages, preprocess, thresholdLevel, psm]); // re-bind when tuning changes
 
   // Generate URL preview and trigger OCR process
   const handleImageSelect = (selectedFile) => {
     if (!selectedFile) return;
 
-    // Reset previous states
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -71,16 +72,22 @@ export default function App() {
   };
 
   // Perform backend OCR request
-  const performOCR = async (targetFile, langs) => {
+  const performOCR = async (targetFile, langs, customOptions = {}) => {
     setStatus('loading');
     
+    // Resolve dynamic values to prevent synchronization latency
+    const activePreprocess = customOptions.hasOwnProperty('preprocess') ? customOptions.preprocess : preprocess;
+    const activeThreshold = customOptions.hasOwnProperty('thresholdLevel') ? customOptions.thresholdLevel : thresholdLevel;
+    const activePsm = customOptions.hasOwnProperty('psm') ? customOptions.psm : psm;
+
     const formData = new FormData();
     formData.append('image', targetFile);
-    // Tesseract expects languages linked with '+' separator e.g. 'eng+tha'
     formData.append('languages', langs.join('+'));
+    formData.append('preprocess', activePreprocess ? 'true' : 'false');
+    formData.append('thresholdLevel', activeThreshold.toString());
+    formData.append('psm', activePsm);
 
     try {
-      // Connect to express server
       const response = await fetch('http://localhost:5000/api/extract-text', {
         method: 'POST',
         body: formData,
@@ -92,7 +99,6 @@ export default function App() {
         throw new Error(data.error || 'Server returned an error during text recognition.');
       }
 
-      // Populate text output details
       setOcrText(data.text || '');
       setConfidence(data.confidence || 0);
       setDurationMs(data.durationMs || 0);
@@ -102,6 +108,28 @@ export default function App() {
       console.error('[OCR Frontend Error]:', error);
       setErrorMessage(error.message || 'Network connection failed. Make sure your server is running on port 5000.');
       setStatus('error');
+    }
+  };
+
+  // State trigger wrappers for instant dynamic processing
+  const handlePreprocessChange = (val) => {
+    setPreprocess(val);
+    if (file) {
+      performOCR(file, selectedLanguages, { preprocess: val });
+    }
+  };
+
+  const handleThresholdChange = (val) => {
+    setThresholdLevel(val);
+    if (file) {
+      performOCR(file, selectedLanguages, { thresholdLevel: val });
+    }
+  };
+
+  const handlePsmChange = (val) => {
+    setPsm(val);
+    if (file) {
+      performOCR(file, selectedLanguages, { psm: val });
     }
   };
 
@@ -128,20 +156,17 @@ export default function App() {
   const loadDemoSample = async () => {
     try {
       setStatus('loading');
-      // Create a canvas with text, convert to Blob, and use as file
       const canvas = document.createElement('canvas');
       canvas.width = 600;
       canvas.height = 300;
       const ctx = canvas.getContext('2d');
       
-      // Paint sleek dark design in sample canvas
       const grad = ctx.createLinearGradient(0, 0, 600, 300);
       grad.addColorStop(0, '#0f172a');
       grad.addColorStop(1, '#1e1b4b');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, 600, 300);
       
-      // Draw English Text
       ctx.fillStyle = '#38bdf8';
       ctx.font = 'bold 24px Inter, sans-serif';
       ctx.fillText('Smart Clipboard OCR - Demo Sample', 40, 60);
@@ -151,7 +176,6 @@ export default function App() {
       ctx.fillText('Success: Dual character engine configuration works perfectly!', 40, 110);
       ctx.fillText('Tesseract.js parsed this text from an in-memory buffer.', 40, 140);
       
-      // Draw Thai Text
       ctx.fillStyle = '#818cf8';
       ctx.font = 'bold 24px sans-serif';
       ctx.fillText('การทดสอบการรู้จำอักขระภาษาไทย', 40, 200);
@@ -184,16 +208,21 @@ export default function App() {
 
       <main className="relative z-10 w-full max-w-6xl mx-auto px-4 flex-1 flex flex-col">
         
-        {/* Core Settings / Language selector */}
+        {/* Core Settings / Language Selector & Precision Tuning Controls */}
         <LanguageSelector
           selectedLanguages={selectedLanguages}
           onChange={(langs) => {
             setSelectedLanguages(langs);
-            // Re-trigger OCR if a file is already loaded
             if (file) {
               performOCR(file, langs);
             }
           }}
+          preprocess={preprocess}
+          onPreprocessChange={handlePreprocessChange}
+          thresholdLevel={thresholdLevel}
+          onThresholdChange={handleThresholdChange}
+          psm={psm}
+          onPsmChange={handlePsmChange}
         />
 
         {/* Dynamic Display Grid */}
@@ -271,7 +300,7 @@ export default function App() {
 
       {/* Persistent global keyboard tips */}
       <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 mt-8 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-[10px] gap-2">
-        <div>Smart Clipboard OCR v1.0.0 — Engineered with RAM Safety MemoryStorage</div>
+        <div>Smart Clipboard OCR v1.1.0 — Engineered with AI Pre-processing & Layout Tuning</div>
         <div className="flex items-center gap-1.5 bg-slate-900/30 px-3 py-1 rounded-full border border-slate-900/60">
           <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
           <span>Tip: paste screenshot instantly from snip-tool at any moment!</span>

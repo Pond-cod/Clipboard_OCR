@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import Tesseract from 'tesseract.js';
 import dotenv from 'dotenv';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -35,13 +36,45 @@ const upload = multer({
   }
 });
 
+// Pre-processing helper utilizing Sharp to format images for maximum OCR readability
+async function preprocessImage(buffer, options = {}) {
+  try {
+    let pipeline = sharp(buffer);
+    const metadata = await pipeline.metadata();
+    
+    // 1. Upscale if image is too small (width < 1200px) to boost text density (DPI)
+    if (metadata.width && metadata.width < 1200) {
+      const scaleFactor = 2;
+      pipeline = pipeline.resize({
+        width: Math.round(metadata.width * scaleFactor),
+        kernel: sharp.kernel.lanczos3
+      });
+    }
+
+    // 2. Grayscale: Eliminate color noise
+    pipeline = pipeline.greyscale();
+
+    // 3. High-Contrast threshold binarization
+    // (Values between 120-140 generally give optimal text-to-background contrast)
+    const thresholdVal = parseInt(options.thresholdLevel) || 135;
+    pipeline = pipeline.threshold(thresholdVal);
+
+    // 4. Export as highly optimized PNG buffer
+    return await pipeline.toFormat('png').toBuffer();
+  } catch (err) {
+    console.warn('[Preprocessing Warning] Custom pre-processing failed, falling back to raw buffer:', err);
+    return buffer; // Fallback to original buffer
+  }
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     services: {
-      ocr: 'tesseract.js'
+      ocr: 'tesseract.js',
+      preprocessor: 'sharp'
     }
   });
 });
@@ -60,21 +93,31 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
     }
 
     // 2. Determine target languages (default to English + Thai)
-    // Supports languages passed as comma-separated or plus-separated strings
     let lang = req.body.languages || 'eng+tha';
     if (Array.isArray(lang)) {
       lang = lang.join('+');
     }
-    // Standardize to '+' separated syntax for Tesseract
     lang = lang.replace(/,/g, '+');
 
-    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes), Mime: ${req.file.mimetype}, Languages: ${lang}`);
+    // 3. Read custom tuning flags from request body
+    const doPreprocess = req.body.preprocess === 'true';
+    const thresholdLevel = req.body.thresholdLevel || '135';
+    const psmMode = req.body.psm || '3'; // Default to '3' (Automatic page segmentation)
 
-    // 3. Process image buffer directly using Tesseract
+    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes), Languages: ${lang}, Preprocess: ${doPreprocess}, PSM: ${psmMode}`);
+
+    // 4. Select buffer to analyze (apply pre-processing pipeline if requested)
+    let finalBuffer = req.file.buffer;
+    if (doPreprocess) {
+      finalBuffer = await preprocessImage(req.file.buffer, { thresholdLevel });
+    }
+
+    // 5. Process buffer using Tesseract configured with target options
     const { data } = await Tesseract.recognize(
-      req.file.buffer,
+      finalBuffer,
       lang,
       {
+        tessedit_pageseg_mode: psmMode,
         // Option to track worker logs (e.g., download progress)
         logger: (m) => {
           if (m.status === 'recognizing text') {
@@ -87,13 +130,18 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
     const duration = Date.now() - startTime;
     console.log(`[OCR Completed] Success. Text length: ${data.text?.length || 0}. Confidence: ${data.confidence}%. Duration: ${duration}ms`);
 
-    // 4. Return standard success JSON response
+    // 6. Return standard success JSON response
     return res.json({
       success: true,
       text: data.text,
       confidence: data.confidence,
       language: lang,
       durationMs: duration,
+      tuning: {
+        preprocessed: doPreprocess,
+        thresholdUsed: doPreprocess ? thresholdLevel : null,
+        psmUsed: psmMode
+      },
       metadata: {
         filename: req.file.originalname,
         sizeBytes: req.file.size,
