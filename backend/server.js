@@ -349,7 +349,7 @@ function checkAndVerifySpelling(text) {
     let result = '';
     
     for (const segment of segments) {
-      const word = segment.text;
+      const word = segment.segment;
       const isWordType = segment.isWordLike;
       
       const hasThai = /[\u0E00-\u0E7F]/.test(word);
@@ -718,6 +718,121 @@ app.get('/api/health', (_, res) => {
       postProcessor: 'thai-merge + noise-filter + formatter',
     },
   });
+});
+
+// ─── ORST Dictionary Lookup Endpoint ──────────────────────────────────────────
+app.get('/api/dictionary/lookup', (req, res) => {
+  try {
+    const { word } = req.query;
+    if (!word) {
+      return res.status(400).json({ success: false, error: 'Word parameter is required.' });
+    }
+
+    const cleanWord = word.trim();
+    const exists = thaiWordlistSet.has(cleanWord);
+
+    let suggestions = [];
+    if (!exists && thaiWordlistSet.size > 0) {
+      const matches = [];
+      for (const dictWord of thaiWordlistSet) {
+        if (Math.abs(dictWord.length - cleanWord.length) <= 2) {
+          const dist = getLevenshteinDistance(cleanWord, dictWord);
+          if (dist <= 2) {
+            matches.push({ word: dictWord, distance: dist });
+          }
+        }
+      }
+      matches.sort((a, b) => a.distance - b.distance || Math.abs(a.word.length - cleanWord.length) - Math.abs(b.word.length - cleanWord.length));
+      suggestions = matches.slice(0, 5).map(m => m.word);
+    }
+
+    return res.json({
+      success: true,
+      word: cleanWord,
+      exists,
+      suggestions,
+      googleSearchUrl: `https://www.google.com/search?q=site%3Adictionary.orst.go.th+${encodeURIComponent(cleanWord)}`,
+      orstUrl: 'https://dictionary.orst.go.th/'
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── Entire Text Spell-Check Endpoint ──────────────────────────────────────────
+app.post('/api/dictionary/spellcheck', (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.json({ success: true, typos: [] });
+    }
+
+    if (thaiWordlistSet.size === 0) {
+      return res.json({ success: true, typos: [], warning: 'Royal Institute Dictionary is not loaded.' });
+    }
+
+    const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
+    const segments = Array.from(segmenter.segment(text));
+    const typosMap = new Map();
+
+    for (const segment of segments) {
+      const word = segment.segment;
+      const isWordType = segment.isWordLike;
+      const hasThai = /[\u0E00-\u0E7F]/.test(word);
+
+      if (isWordType && hasThai && word.length > 1 && !thaiWordlistSet.has(word)) {
+        if (!typosMap.has(word)) {
+          // Find spelling suggestions
+          const matches = [];
+          
+          // Try adding standard Thai tone marks first for speed
+          const toneMarks = ['\u0E48', '\u0E49', '\u0E4A', '\u0E4B'];
+          for (const tone of toneMarks) {
+            const candidate = word + tone;
+            if (thaiWordlistSet.has(candidate)) {
+              matches.push({ word: candidate, distance: 1 });
+            }
+          }
+
+          if (word.includes('ำ')) {
+            const candidate = word.replace(/ำ/g, 'า');
+            if (thaiWordlistSet.has(candidate)) matches.push({ word: candidate, distance: 1 });
+          } else if (word.includes('า')) {
+            const candidate = word.replace(/า/g, 'ำ');
+            if (thaiWordlistSet.has(candidate)) matches.push({ word: candidate, distance: 1 });
+          }
+
+          // Use Levenshtein distance check if suggestions are empty
+          if (matches.length === 0) {
+            for (const dictWord of thaiWordlistSet) {
+              if (Math.abs(dictWord.length - word.length) <= 1) {
+                const dist = getLevenshteinDistance(word, dictWord);
+                if (dist <= 2) {
+                  matches.push({ word: dictWord, distance: dist });
+                }
+              }
+            }
+          }
+
+          matches.sort((a, b) => a.distance - b.distance || Math.abs(a.word.length - word.length) - Math.abs(b.word.length - word.length));
+          const suggestions = Array.from(new Set(matches.map(m => m.word))).slice(0, 3);
+          
+          typosMap.set(word, {
+            word,
+            suggestions,
+            googleSearchUrl: `https://www.google.com/search?q=site%3Adictionary.orst.go.th+${encodeURIComponent(word)}`
+          });
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      typos: Array.from(typosMap.values())
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // ─── Image Pre-Check Endpoint (optional quick analysis) ──────────────────────
