@@ -47,8 +47,7 @@ export default function DropZone({ onFileSelect }) {
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
       onDrop={handleDrop}
-      onClick={handleClick}
-      className={`glass-panel-interactive relative group w-full rounded-3xl p-8 md:p-12 flex flex-col items-center justify-center text-center cursor-pointer min-h-[300px] overflow-hidden ${
+      className={`glass-panel-interactive relative group w-full rounded-3xl p-8 md:p-12 flex flex-col items-center justify-center text-center min-h-[300px] overflow-hidden ${
         isDragActive ? 'bg-brand-500/10 border-brand-400 scale-[1.01]' : ''
       }`}
     >
@@ -97,6 +96,7 @@ export default function DropZone({ onFileSelect }) {
 
         <button
           type="button"
+          onClick={handleClick}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
         >
           <ImageIcon className="w-4 h-4" />
