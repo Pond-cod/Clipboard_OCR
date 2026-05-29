@@ -78,47 +78,75 @@ export default function ImagePreview({
   };
 
   const handlePointerMove = (e) => {
-    if (!dragMode || !imgDims.width) return;
+    if (!dragMode) return;
     e.preventDefault();
 
-    const deltaX = ((e.clientX - startPos.x) / imgDims.width) * 100;
-    const deltaY = ((e.clientY - startPos.y) / imgDims.height) * 100;
-
-    let nextCrop = { ...crop };
-
-    if (dragMode === 'move') {
-      // Reposition box, maintaining limits [0, 100]
-      nextCrop.x = Math.max(0, Math.min(100 - crop.w, startPos.boxX + deltaX));
-      nextCrop.y = Math.max(0, Math.min(100 - crop.h, startPos.boxY + deltaY));
+    if (dragMode === 'draw') {
+      if (!imgRef.current) return;
+      const rect = imgRef.current.getBoundingClientRect();
+      
+      const startPctX = ((startPos.x - rect.left) / rect.width) * 100;
+      const startPctY = ((startPos.y - rect.top) / rect.height) * 100;
+      
+      const currentPctX = ((e.clientX - rect.left) / rect.width) * 100;
+      const currentPctY = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      const x = Math.max(0, Math.min(100, Math.min(startPctX, currentPctX)));
+      const y = Math.max(0, Math.min(100, Math.min(startPctY, currentPctY)));
+      const w = Math.max(2, Math.min(100 - x, Math.abs(startPctX - currentPctX)));
+      const h = Math.max(2, Math.min(100 - y, Math.abs(startPctY - currentPctY)));
+      
+      setCrop({ x, y, w, h });
     } else {
-      // Resize modes
-      if (dragMode.includes('n')) {
-        const potentialH = startPos.boxH - deltaY;
-        if (potentialH > 10) {
-          nextCrop.y = Math.max(0, Math.min(startPos.boxY + startPos.boxH - 10, startPos.boxY + deltaY));
-          nextCrop.h = startPos.boxY + startPos.boxH - nextCrop.y;
-        }
-      }
-      if (dragMode.includes('s')) {
-        nextCrop.h = Math.max(10, Math.min(100 - crop.y, startPos.boxH + deltaY));
-      }
-      if (dragMode.includes('w')) {
-        const potentialW = startPos.boxW - deltaX;
-        if (potentialW > 10) {
-          nextCrop.x = Math.max(0, Math.min(startPos.boxX + startPos.boxW - 10, startPos.boxX + deltaX));
-          nextCrop.w = startPos.boxX + startPos.boxW - nextCrop.x;
-        }
-      }
-      if (dragMode.includes('e')) {
-        nextCrop.w = Math.max(10, Math.min(100 - crop.x, startPos.boxW + deltaX));
-      }
-    }
+      if (!imgDims.width) return;
+      const deltaX = ((e.clientX - startPos.x) / imgDims.width) * 100;
+      const deltaY = ((e.clientY - startPos.y) / imgDims.height) * 100;
 
-    setCrop(nextCrop);
+      let nextCrop = { ...crop };
+
+      if (dragMode === 'move') {
+        // Reposition box, maintaining limits [0, 100]
+        nextCrop.x = Math.max(0, Math.min(100 - crop.w, startPos.boxX + deltaX));
+        nextCrop.y = Math.max(0, Math.min(100 - crop.h, startPos.boxY + deltaY));
+      } else {
+        // Resize modes
+        if (dragMode.includes('n')) {
+          const potentialH = startPos.boxH - deltaY;
+          if (potentialH > 10) {
+            nextCrop.y = Math.max(0, Math.min(startPos.boxY + startPos.boxH - 10, startPos.boxY + deltaY));
+            nextCrop.h = startPos.boxY + startPos.boxH - nextCrop.y;
+          }
+        }
+        if (dragMode.includes('s')) {
+          nextCrop.h = Math.max(10, Math.min(100 - crop.y, startPos.boxH + deltaY));
+        }
+        if (dragMode.includes('w')) {
+          const potentialW = startPos.boxW - deltaX;
+          if (potentialW > 10) {
+            nextCrop.x = Math.max(0, Math.min(startPos.boxX + startPos.boxW - 10, startPos.boxX + deltaX));
+            nextCrop.w = startPos.boxX + startPos.boxW - nextCrop.x;
+          }
+        }
+        if (dragMode.includes('e')) {
+          nextCrop.w = Math.max(10, Math.min(100 - crop.x, startPos.boxW + deltaX));
+        }
+      }
+
+      setCrop(nextCrop);
+    }
   };
 
   const handlePointerUp = () => {
-    setDragMode(null);
+    if (dragMode) {
+      const isDrawTiny = dragMode === 'draw' && (crop.w < 3 || crop.h < 3);
+      setDragMode(null);
+      if (!isDrawTiny) {
+        // Auto-trigger crop processing on mouse/touch release for instant OCR scan!
+        setTimeout(() => {
+          triggerCropProcess();
+        }, 50);
+      }
+    }
   };
 
   // Convert canvas crop coordinates into new File buffer
@@ -275,6 +303,7 @@ export default function ImagePreview({
           {/* Interactive HTML5 Crop Overlay Container */}
           {isCropping && imgDims.width > 0 && (
             <div
+              onPointerDown={(e) => handlePointerDown(e, 'draw')}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerLeave={handlePointerUp}
