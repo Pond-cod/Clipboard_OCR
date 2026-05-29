@@ -87,6 +87,42 @@ export default function App() {
     }
   };
 
+  // Capture screen/window display stream (Snipping Tool)
+  const handleCaptureScreen = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false
+      });
+      
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      
+      video.onloadedmetadata = () => {
+        setTimeout(() => {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          canvas.toBlob((blob) => {
+            const capturedFile = new File([blob], `snip-${Date.now()}.png`, { type: 'image/png' });
+            
+            // Stop sharing screen
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Feed into OCR select handler
+            handleImageSelect(capturedFile);
+          }, 'image/png');
+        }, 500); // 500ms safe delay
+      };
+    } catch (err) {
+      console.warn('[Screen Capture Cancelled or Failed]:', err.message);
+    }
+  };
+
   // Generate URL preview and trigger OCR process
   const handleImageSelect = (selectedFile) => {
     if (!selectedFile) return;
@@ -368,7 +404,7 @@ export default function App() {
         <div className="flex-1 flex flex-col gap-6">
           {status === 'idle' ? (
             <div className="flex flex-col gap-4">
-              <DropZone onFileSelect={handleImageSelect} />
+              <DropZone onFileSelect={handleImageSelect} onCaptureScreen={handleCaptureScreen} />
               
               {/* Demo Action Trigger */}
               <div className="flex justify-center mt-2">
@@ -395,6 +431,7 @@ export default function App() {
                   onRestoreFull={handleRestoreFull}
                   imageAnalysis={imageAnalysis}
                   analysisLoading={analysisLoading}
+                  onCaptureScreen={handleCaptureScreen}
                 />
               </div>
 

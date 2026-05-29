@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, Image as ImageIcon, ClipboardPaste } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, ClipboardPaste, Scissors } from 'lucide-react';
 
-export default function DropZone({ onFileSelect }) {
+export default function DropZone({ onFileSelect, onCaptureScreen }) {
   const fileInputRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
 
@@ -94,14 +94,25 @@ export default function DropZone({ onFileSelect }) {
           <span className="h-[1px] w-8 bg-slate-800"></span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleClick}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-        >
-          <ImageIcon className="w-4 h-4" />
-          Browse Files
-        </button>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button
+            type="button"
+            onClick={handleClick}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 active:scale-95 text-slate-200 text-xs font-semibold hover:scale-105 transition-all duration-200 cursor-pointer"
+          >
+            <ImageIcon className="w-4 h-4 text-brand-400" />
+            Browse Files
+          </button>
+
+          <button
+            type="button"
+            onClick={onCaptureScreen}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+          >
+            <Scissors className="w-4 h-4" />
+            Snipping Tool (ถ่ายภาพหน้าจอ)
+          </button>
+        </div>
 
         <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider mt-2">
           Supports PNG, JPEG, WEBP, BMP (Max 10MB)

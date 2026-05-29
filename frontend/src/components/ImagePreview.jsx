@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, FileText, Crop, RefreshCcw, Check, Sparkles } from 'lucide-react';
+import { X, FileText, Crop, RefreshCcw, Check, Sparkles, Scissors } from 'lucide-react';
 
 export default function ImagePreview({ 
   file, 
@@ -9,7 +9,8 @@ export default function ImagePreview({
   onCropApply, 
   onRestoreFull,
   imageAnalysis,
-  analysisLoading
+  analysisLoading,
+  onCaptureScreen
 }) {
   const imgRef = useRef(null);
   const containerRef = useRef(null);
@@ -197,23 +198,33 @@ export default function ImagePreview({
                 Full Image
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCropping(!isCropping);
-                  if (!isCropping) {
-                    setTimeout(updateImgDims, 50);
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all duration-200 ${
-                  isCropping 
-                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-md' 
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-              >
-                <Crop className="w-3.5 h-3.5" />
-                {isCropping ? 'Cancel Crop' : 'Crop Area'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onCaptureScreen}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all duration-200"
+                >
+                  <Scissors className="w-3.5 h-3.5 text-brand-400" />
+                  Snipping Tool
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCropping(!isCropping);
+                    if (!isCropping) {
+                      setTimeout(updateImgDims, 50);
+                    }
+                  }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all duration-200 ${
+                    isCropping 
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-md' 
+                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <Crop className="w-3.5 h-3.5" />
+                  {isCropping ? 'Cancel Crop' : 'Crop Area'}
+                </button>
+              </div>
             )}
           </div>
         </div>
