@@ -102,9 +102,13 @@ export default function App() {
       
       const video = document.createElement('video');
       video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
       video.autoplay = true;
       
       video.onloadedmetadata = () => {
+        video.play().catch(e => console.warn('[Video Play Error]:', e.message));
+        
         let delayMs = captureDelay * 1000;
         
         if (delayMs > 0) {
@@ -124,12 +128,16 @@ export default function App() {
 
         setTimeout(() => {
           const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          canvas.width = video.videoWidth || 1920;
+          canvas.height = video.videoHeight || 1080;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
           canvas.toBlob((blob) => {
+            if (!blob) {
+              console.error('[Capture Error]: Canvas toBlob returned null.');
+              return;
+            }
             const capturedFile = new File([blob], `snip-${Date.now()}.png`, { type: 'image/png' });
             
             // Stop sharing screen
