@@ -1,8 +1,147 @@
-import React from 'react';
-import { X, FileText, CheckCircle, Flame } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, FileText, Crop, RefreshCcw, Check, Sparkles } from 'lucide-react';
 
-export default function ImagePreview({ file, previewUrl, onClear, progress, status }) {
-  // Helper to format bytes into readable scale
+export default function ImagePreview({ file, previewUrl, onClear, status, onCropApply, onRestoreFull }) {
+  const imgRef = useRef(null);
+  const containerRef = useRef(null);
+  
+  // Cropper states
+  const [isCropping, setIsCropping] = useState(false);
+  const [crop, setCrop] = useState({ x: 15, y: 15, w: 70, h: 70 }); // percentages
+  const [imgDims, setImgDims] = useState({ top: 0, left: 0, width: 0, height: 0 });
+  const [dragMode, setDragMode] = useState(null); // 'move' | 'nw' | 'ne' | 'sw' | 'se'
+  const [startPos, setStartPos] = useState({ x: 0, y: 0, boxX: 0, boxY: 0, boxW: 0, boxH: 0 });
+  const [croppedLabel, setCroppedLabel] = useState(false);
+
+  // Update dimensions of crop overlay matching scale in image tag
+  const updateImgDims = () => {
+    if (imgRef.current && containerRef.current) {
+      const rect = imgRef.current.getBoundingClientRect();
+      const parentRect = containerRef.current.getBoundingClientRect();
+      setImgDims({
+        top: rect.top - parentRect.top,
+        left: rect.left - parentRect.left,
+        width: rect.width,
+        height: rect.height
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isCropping) {
+      updateImgDims();
+      window.addEventListener('resize', updateImgDims);
+    } else {
+      window.removeEventListener('resize', updateImgDims);
+    }
+    return () => {
+      window.removeEventListener('resize', updateImgDims);
+    };
+  }, [isCropping]);
+
+  const handleImgLoad = () => {
+    if (isCropping) {
+      updateImgDims();
+    }
+  };
+
+  // Drag handles
+  const handlePointerDown = (e, mode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragMode(mode);
+    setStartPos({
+      x: e.clientX,
+      y: e.clientY,
+      boxX: crop.x,
+      boxY: crop.y,
+      boxW: crop.w,
+      boxH: crop.h
+    });
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragMode || !imgDims.width) return;
+    e.preventDefault();
+
+    const deltaX = ((e.clientX - startPos.x) / imgDims.width) * 100;
+    const deltaY = ((e.clientY - startPos.y) / imgDims.height) * 100;
+
+    let nextCrop = { ...crop };
+
+    if (dragMode === 'move') {
+      // Reposition box, maintaining limits [0, 100]
+      nextCrop.x = Math.max(0, Math.min(100 - crop.w, startPos.boxX + deltaX));
+      nextCrop.y = Math.max(0, Math.min(100 - crop.h, startPos.boxY + deltaY));
+    } else {
+      // Resize modes
+      if (dragMode.includes('n')) {
+        const potentialH = startPos.boxH - deltaY;
+        if (potentialH > 10) {
+          nextCrop.y = Math.max(0, Math.min(startPos.boxY + startPos.boxH - 10, startPos.boxY + deltaY));
+          nextCrop.h = startPos.boxY + startPos.boxH - nextCrop.y;
+        }
+      }
+      if (dragMode.includes('s')) {
+        nextCrop.h = Math.max(10, Math.min(100 - crop.y, startPos.boxH + deltaY));
+      }
+      if (dragMode.includes('w')) {
+        const potentialW = startPos.boxW - deltaX;
+        if (potentialW > 10) {
+          nextCrop.x = Math.max(0, Math.min(startPos.boxX + startPos.boxW - 10, startPos.boxX + deltaX));
+          nextCrop.w = startPos.boxX + startPos.boxW - nextCrop.x;
+        }
+      }
+      if (dragMode.includes('e')) {
+        nextCrop.w = Math.max(10, Math.min(100 - crop.x, startPos.boxW + deltaX));
+      }
+    }
+
+    setCrop(nextCrop);
+  };
+
+  const handlePointerUp = () => {
+    setDragMode(null);
+  };
+
+  // Convert canvas crop coordinates into new File buffer
+  const triggerCropProcess = () => {
+    if (!file) return;
+
+    const img = new Image();
+    img.src = previewUrl;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Convert percentages to absolute image dimensions
+      const pxX = img.width * (crop.x / 100);
+      const pxY = img.height * (crop.y / 100);
+      const pxW = img.width * (crop.w / 100);
+      const pxH = img.height * (crop.h / 100);
+
+      canvas.width = pxW;
+      canvas.height = pxH;
+
+      // Draw cropped area
+      ctx.drawImage(img, pxX, pxY, pxW, pxH, 0, 0, pxW, pxH);
+
+      canvas.toBlob((blob) => {
+        const croppedFile = new File([blob], `cropped-${file.name || 'image.png'}`, { type: file.type || 'image/png' });
+        
+        onCropApply(croppedFile);
+        setCroppedLabel(true);
+        setIsCropping(false);
+      }, file.type || 'image/png');
+    };
+  };
+
+  const handleRestoreFullImage = () => {
+    onRestoreFull();
+    setCroppedLabel(false);
+    setIsCropping(false);
+  };
+
   const formatBytes = (bytes, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -25,22 +164,122 @@ export default function ImagePreview({ file, previewUrl, onClear, progress, stat
       </button>
 
       <div className="flex flex-col gap-4 h-full">
-        <div className="flex items-center gap-2 mb-2">
-          <FileText className="w-5 h-5 text-brand-400" />
-          <h3 className="font-display font-semibold text-white">Source Image</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-brand-400" />
+            <h3 className="font-display font-semibold text-white">Source Image</h3>
+            {croppedLabel && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                <Sparkles className="w-2.5 h-2.5" />
+                Cropped Area
+              </span>
+            )}
+          </div>
+
+          {/* Action Buttons for Cropping */}
+          <div className="flex gap-2 relative z-10">
+            {croppedLabel ? (
+              <button
+                type="button"
+                onClick={handleRestoreFullImage}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-brand-500/30 text-slate-300 hover:text-brand-300 text-xs font-semibold cursor-pointer transition-all duration-200"
+              >
+                <RefreshCcw className="w-3.5 h-3.5" />
+                Full Image
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCropping(!isCropping);
+                  if (!isCropping) {
+                    setTimeout(updateImgDims, 50);
+                  }
+                }}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all duration-200 ${
+                  isCropping 
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-md' 
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <Crop className="w-3.5 h-3.5" />
+                {isCropping ? 'Cancel Crop' : 'Crop Area'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Polaroid Style Image Preview Box */}
-        <div className="relative flex-1 min-h-[220px] max-h-[340px] bg-slate-950/80 rounded-2xl overflow-hidden border border-slate-800/80 flex items-center justify-center p-3">
+        <div 
+          ref={containerRef}
+          className="relative flex-1 min-h-[260px] max-h-[360px] bg-slate-950/80 rounded-2xl overflow-hidden border border-slate-800/80 flex items-center justify-center p-3"
+        >
           <img
+            ref={imgRef}
             src={previewUrl}
+            onLoad={handleImgLoad}
             alt="Clipboard Paste Preview"
-            className="max-w-full max-h-full object-contain rounded-lg shadow-md"
+            className="max-w-full max-h-full object-contain rounded-lg shadow-md select-none"
+            draggable="false"
           />
+
+          {/* Interactive HTML5 Crop Overlay Container */}
+          {isCropping && imgDims.width > 0 && (
+            <div
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+              style={{
+                position: 'absolute',
+                top: `${imgDims.top}px`,
+                left: `${imgDims.left}px`,
+                width: `${imgDims.width}px`,
+                height: `${imgDims.height}px`,
+              }}
+              className="z-10 bg-black/60 touch-none select-none rounded-lg"
+            >
+              {/* Draggable Selector Box */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: `${crop.y}%`,
+                  left: `${crop.x}%`,
+                  width: `${crop.w}%`,
+                  height: `${crop.h}%`,
+                }}
+                onPointerDown={(e) => handlePointerDown(e, 'move')}
+                className="border-2 border-brand-400 shadow-[0_0_15px_rgba(14,165,233,0.4)] cursor-move flex items-center justify-center"
+              >
+                {/* Visual guidelines */}
+                <div className="absolute inset-0 bg-transparent opacity-10 border border-dashed border-white pointer-events-none grid grid-cols-3 grid-rows-3">
+                  <div></div><div></div><div></div>
+                  <div></div><div></div><div></div>
+                </div>
+
+                {/* Handles at corners */}
+                <div
+                  onPointerDown={(e) => handlePointerDown(e, 'nw')}
+                  className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-brand-500 rounded-full cursor-nwse-resize z-20 shadow-md"
+                />
+                <div
+                  onPointerDown={(e) => handlePointerDown(e, 'ne')}
+                  className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-brand-500 rounded-full cursor-nesw-resize z-20 shadow-md"
+                />
+                <div
+                  onPointerDown={(e) => handlePointerDown(e, 'sw')}
+                  className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-brand-500 rounded-full cursor-nesw-resize z-20 shadow-md"
+                />
+                <div
+                  onPointerDown={(e) => handlePointerDown(e, 'se')}
+                  className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-brand-500 rounded-full cursor-nwse-resize z-20 shadow-md"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Progress / Status overlay */}
           {status === 'loading' && (
-            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-10 transition-all duration-300">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-15 transition-all duration-300">
               <div className="w-16 h-16 rounded-full border-4 border-slate-800 border-t-brand-500 animate-spin mb-4" />
               <div className="font-display font-semibold text-white text-sm">Analyzing Image Characters...</div>
               <p className="text-slate-400 text-xs mt-1 max-w-[200px] leading-relaxed">
@@ -49,6 +288,27 @@ export default function ImagePreview({ file, previewUrl, onClear, progress, stat
             </div>
           )}
         </div>
+
+        {/* Apply Crop Panel button */}
+        {isCropping && (
+          <div className="mt-2 flex gap-3 animate-fade-in">
+            <button
+              type="button"
+              onClick={triggerCropProcess}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 hover:scale-[1.01] active:scale-[0.99] transition-all duration-150 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              Apply Crop & Re-Scan (สแกนจุดนี้)
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCropping(false)}
+              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
 
         {/* Image Info Panel */}
         <div className="mt-4 pt-4 border-t border-slate-800/60 grid grid-cols-2 gap-3 text-xs">

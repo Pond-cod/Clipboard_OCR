@@ -7,9 +7,11 @@ import ResultViewer from './components/ResultViewer';
 import { AlertCircle, RotateCcw, Clipboard, HelpCircle } from 'lucide-react';
 
 export default function App() {
-  // Application State
+  // Original source file and active processing file (which can be original or cropped)
   const [file, setFile] = useState(null);
+  const [activeFile, setActiveFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  
   const [selectedLanguages, setSelectedLanguages] = useState(['eng', 'tha']);
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'success' | 'error'
   const [ocrText, setOcrText] = useState('');
@@ -61,18 +63,56 @@ export default function App() {
     }
 
     setFile(selectedFile);
+    setActiveFile(selectedFile);
     setPreviewUrl(URL.createObjectURL(selectedFile));
     setOcrText('');
     setConfidence(null);
     setDurationMs(null);
     setErrorMessage('');
     
-    // Trigger extraction
+    // Trigger extraction on the original file
     performOCR(selectedFile, selectedLanguages);
+  };
+
+  // Triggered when user selects a specific crop coordinates region
+  const handleCropApply = (croppedFile) => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setActiveFile(croppedFile);
+    setPreviewUrl(URL.createObjectURL(croppedFile));
+    setOcrText('');
+    setConfidence(null);
+    setDurationMs(null);
+    setErrorMessage('');
+
+    // Trigger extraction on the cropped file
+    performOCR(croppedFile, selectedLanguages);
+  };
+
+  // Restore the original full image
+  const handleRestoreFull = () => {
+    if (!file) return;
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setActiveFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setOcrText('');
+    setConfidence(null);
+    setDurationMs(null);
+    setErrorMessage('');
+
+    // Trigger extraction back on the original file
+    performOCR(file, selectedLanguages);
   };
 
   // Perform backend OCR request
   const performOCR = async (targetFile, langs, customOptions = {}) => {
+    if (!targetFile) return;
     setStatus('loading');
     
     // Resolve dynamic values to prevent synchronization latency
@@ -106,7 +146,16 @@ export default function App() {
 
     } catch (error) {
       console.error('[OCR Frontend Error]:', error);
-      setErrorMessage(error.message || 'Network connection failed. Make sure your server is running on port 5000.');
+      
+      // Friendly, descriptive error translations
+      let friendlyError = error.message;
+      if (error.message.includes('Failed to fetch')) {
+        friendlyError = 'Could not connect to the OCR backend. Please ensure the server in "/backend" is running on port 5000.';
+      } else if (error.message.includes('sharp')) {
+        friendlyError = 'Image pre-processing failed. Please try turning off "AI Image Pre-Processing" or adjusting the crop region.';
+      }
+      
+      setErrorMessage(friendlyError);
       setStatus('error');
     }
   };
@@ -114,22 +163,22 @@ export default function App() {
   // State trigger wrappers for instant dynamic processing
   const handlePreprocessChange = (val) => {
     setPreprocess(val);
-    if (file) {
-      performOCR(file, selectedLanguages, { preprocess: val });
+    if (activeFile) {
+      performOCR(activeFile, selectedLanguages, { preprocess: val });
     }
   };
 
   const handleThresholdChange = (val) => {
     setThresholdLevel(val);
-    if (file) {
-      performOCR(file, selectedLanguages, { thresholdLevel: val });
+    if (activeFile) {
+      performOCR(activeFile, selectedLanguages, { thresholdLevel: val });
     }
   };
 
   const handlePsmChange = (val) => {
     setPsm(val);
-    if (file) {
-      performOCR(file, selectedLanguages, { psm: val });
+    if (activeFile) {
+      performOCR(activeFile, selectedLanguages, { psm: val });
     }
   };
 
@@ -139,6 +188,7 @@ export default function App() {
       URL.revokeObjectURL(previewUrl);
     }
     setFile(null);
+    setActiveFile(null);
     setPreviewUrl(null);
     setOcrText('');
     setConfidence(null);
@@ -213,8 +263,8 @@ export default function App() {
           selectedLanguages={selectedLanguages}
           onChange={(langs) => {
             setSelectedLanguages(langs);
-            if (file) {
-              performOCR(file, langs);
+            if (activeFile) {
+              performOCR(activeFile, langs);
             }
           }}
           preprocess={preprocess}
@@ -252,6 +302,8 @@ export default function App() {
                   previewUrl={previewUrl}
                   onClear={handleReset}
                   status={status}
+                  onCropApply={handleCropApply}
+                  onRestoreFull={handleRestoreFull}
                 />
               </div>
 
@@ -269,7 +321,7 @@ export default function App() {
                     <div className="flex gap-3 mt-6">
                       <button
                         type="button"
-                        onClick={() => performOCR(file, selectedLanguages)}
+                        onClick={() => performOCR(activeFile, selectedLanguages)}
                         className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700 cursor-pointer transition-colors"
                       >
                         Retry OCR
@@ -300,7 +352,7 @@ export default function App() {
 
       {/* Persistent global keyboard tips */}
       <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 mt-8 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-[10px] gap-2">
-        <div>Smart Clipboard OCR v1.1.0 — Engineered with AI Pre-processing & Layout Tuning</div>
+        <div>Smart Clipboard OCR v1.2.0 — ROI Regions & Spellchecking active</div>
         <div className="flex items-center gap-1.5 bg-slate-900/30 px-3 py-1 rounded-full border border-slate-900/60">
           <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
           <span>Tip: paste screenshot instantly from snip-tool at any moment!</span>

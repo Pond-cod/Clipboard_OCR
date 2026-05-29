@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, Download, AlertTriangle, FileSpreadsheet, Hourglass } from 'lucide-react';
+import { Copy, Check, Download, AlertTriangle, FileSpreadsheet, Hourglass, HelpCircle } from 'lucide-react';
 
 export default function ResultViewer({ text, confidence, durationMs, onTextChange, status }) {
   const [copied, setCopied] = useState(false);
@@ -37,6 +37,21 @@ export default function ResultViewer({ text, confidence, durationMs, onTextChang
   const wordCount = text ? text.trim().split(/\s+/).filter(Boolean).length : 0;
   const charCount = text ? text.length : 0;
 
+  // Language auto-validation from extracted character set ranges
+  const detectLanguages = (str) => {
+    if (!str) return [];
+    const list = [];
+    const hasThai = /[\u0e00-\u0e7f]/.test(str);
+    const hasEnglish = /[a-zA-Z]/.test(str);
+    
+    if (hasThai) list.push({ code: 'TH', name: 'Thai', icon: '🇹🇭' });
+    if (hasEnglish) list.push({ code: 'EN', name: 'English', icon: '🇬🇧' });
+    
+    return list;
+  };
+
+  const detectedLangs = detectLanguages(text);
+
   return (
     <div className="glass-panel p-6 rounded-3xl shadow-2xl h-full flex flex-col justify-between min-h-[400px]">
       <div className="flex flex-col gap-4 h-full flex-1">
@@ -44,6 +59,22 @@ export default function ResultViewer({ text, confidence, durationMs, onTextChang
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-brand-400" />
             <h3 className="font-display font-semibold text-white">Extracted Text</h3>
+            
+            {/* Auto-detected Language Validation Badges */}
+            {text && detectedLangs.length > 0 && (
+              <div className="flex gap-1 ml-1">
+                {detectedLangs.map((lang) => (
+                  <span 
+                    key={lang.code} 
+                    title={`Verified ${lang.name} character set in output`}
+                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[10px] font-bold select-none cursor-help"
+                  >
+                    <span>{lang.icon}</span>
+                    <span>{lang.code}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {text && (
@@ -95,6 +126,17 @@ export default function ResultViewer({ text, confidence, durationMs, onTextChang
           />
         </div>
       </div>
+
+      {/* Dynamic Suggestions for Low OCR confidence */}
+      {text && confidence && confidence < 78 && (
+        <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-2.5 text-xs text-amber-300 animate-fade-in">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+          <div className="flex-1">
+            <span className="font-bold block mb-0.5">Tuning Tip for 100% Accuracy:</span>
+            <span>The current confidence score is lower. Try using the **Crop Area** button on the image to scan just the text, or toggle **AI Image Pre-Processing** and adjust the slider to sharpen the characters!</span>
+          </div>
+        </div>
+      )}
 
       {/* Metrics Row */}
       {text && confidenceMetric && (

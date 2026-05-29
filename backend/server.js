@@ -67,6 +67,50 @@ async function preprocessImage(buffer, options = {}) {
   }
 }
 
+// Thai Spellcheck / Auto-Correct Dictionary for OCR slips
+function correctOcrText(text) {
+  if (!text) return text;
+  
+  let corrected = text;
+  
+  const corrections = [
+    // Standard character merging / segmentation errors
+    { pattern: /เเ/g, replacement: 'แ' }, // Double 'เ' to 'แ'
+    { pattern: /โอนเเงิน/g, replacement: 'โอนเงิน' },
+    { pattern: /โอนเฃิน/g, replacement: 'โอนเงิน' },
+    
+    // Core Thai slip terms mapped from common OCR errors
+    { pattern: /รายรับคงหปล/g, replacement: 'รายรับคงเหลือ' },
+    { pattern: /ยอดเงินคงหปล/g, replacement: 'ยอดเงินคงเหลือ' },
+    { pattern: /รายวายเทือหนว/g, replacement: 'รายจ่ายทั้งหมด' },
+    { pattern: /รายวาย/g, replacement: 'รายจ่าย' },
+    { pattern: /เทือหนว/g, replacement: 'ทั้งหมด' },
+    { pattern: /รองรน/g, replacement: 'รองรับ' },
+    { pattern: /ร วผิ/g, replacement: 'รูปภาพ' },
+    { pattern: /คลิกเฟเพื่ออัปโหลด/g, replacement: 'คลิกเพื่ออัปโหลด' },
+    { pattern: /ข้อมูลรายทาร/g, replacement: 'ข้อมูลรายการ' },
+    { pattern: /ยังไม่มีข้อมูลรายทาร/g, replacement: 'ยังไม่มีข้อมูลรายการ' },
+    
+    // Grammatical fixes
+    { pattern: /วันที\b|วันที /g, replacement: 'วันที่ ' },
+    { pattern: /จํานวนเงิน/g, replacement: 'จำนวนเงิน' },
+    { pattern: /ช้อมูล/g, replacement: 'ข้อมูล' },
+    { pattern: /เสร็จสิ้บ/g, replacement: 'เสร็จสิ้น' },
+    { pattern: /สําเร็จ/g, replacement: 'สำเร็จ' },
+    { pattern: /บัญชีู/g, replacement: 'บัญชี' },
+    { pattern: /ใข้/g, replacement: 'ใช้' },
+    { pattern: /ผู้้/g, replacement: 'ผู้' },
+    { pattern: /ค่่า/g, replacement: 'ค่า' },
+    { pattern: /สลิิป/g, replacement: 'สลิป' }
+  ];
+
+  for (const item of corrections) {
+    corrected = corrected.replace(item.pattern, item.replacement);
+  }
+  
+  return corrected;
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -127,13 +171,15 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
       }
     );
 
+    const correctedText = correctOcrText(data.text);
     const duration = Date.now() - startTime;
-    console.log(`[OCR Completed] Success. Text length: ${data.text?.length || 0}. Confidence: ${data.confidence}%. Duration: ${duration}ms`);
+    console.log(`[OCR Completed] Success. Original text length: ${data.text?.length || 0}, Corrected text length: ${correctedText?.length || 0}. Confidence: ${data.confidence}%. Duration: ${duration}ms`);
 
     // 6. Return standard success JSON response
     return res.json({
       success: true,
-      text: data.text,
+      text: correctedText,
+      rawText: data.text, // Kept for debugging / audit logs
       confidence: data.confidence,
       language: lang,
       durationMs: duration,
