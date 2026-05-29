@@ -198,9 +198,15 @@ function reconstructLayout(lines) {
         const prev = line.words[i - 1];
         const gap = cur.bbox.x0 - prev.bbox.x1;
         const charW = (prev.bbox.x1 - prev.bbox.x0) / Math.max(1, prev.text.length);
+        
+        // Custom Heuristic: Avoid inserting spaces for small gaps if both adjacent words are Thai
+        const hasThaiCur = /[\u0E00-\u0E7F]/.test(wordText);
+        const hasThaiPrev = /[\u0E00-\u0E7F]/.test(prev.text || '');
+        const isBothThai = hasThaiCur && hasThaiPrev;
+
         if (gap > 45 && gap > charW * 4.0) {
           lineStr += ' '.repeat(Math.min(28, Math.max(4, Math.round(gap / charW)))) + wordText;
-        } else if (gap > charW * 0.6) {
+        } else if (gap > charW * 0.6 && !isBothThai) {
           lineStr += ' ' + wordText;
         } else {
           lineStr += wordText;
@@ -248,6 +254,7 @@ function correctOcrText(text) {
     [/อหาท/g, 'บาท'],
     [/ยยอด/g, 'ยอด'],
     [/0\.00B/g, '0.00 ฿'],
+    [/Gade/gi, 'มาเลเซีย'],
     [/J-=1/g, ''],
     [/A,\s*\n?/gi, ''],
     [/รายง่า ย เจ้ งหม ด|รายจ่ายเจ้ งหม ด/g, 'รายจ่ายทั้งหมด'],
