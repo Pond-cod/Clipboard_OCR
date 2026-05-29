@@ -10,13 +10,20 @@ export default function ImagePreview({
   onRestoreFull,
   imageAnalysis,
   analysisLoading,
-  onCaptureScreen
+  onCaptureScreen,
+  isCropping: parentIsCropping,
+  setIsCropping: parentSetIsCropping,
+  captureDelay,
+  setCaptureDelay
 }) {
   const imgRef = useRef(null);
   const containerRef = useRef(null);
   
   // Cropper states
-  const [isCropping, setIsCropping] = useState(false);
+  const [localIsCropping, localSetIsCropping] = useState(false);
+  const isCropping = parentIsCropping !== undefined ? parentIsCropping : localIsCropping;
+  const setIsCropping = parentSetIsCropping !== undefined ? parentSetIsCropping : localSetIsCropping;
+
   const [crop, setCrop] = useState({ x: 15, y: 15, w: 70, h: 70 }); // percentages
   const [imgDims, setImgDims] = useState({ top: 0, left: 0, width: 0, height: 0 });
   const [dragMode, setDragMode] = useState(null); // 'move' | 'nw' | 'ne' | 'sw' | 'se'
@@ -198,15 +205,29 @@ export default function ImagePreview({
                 Full Image
               </button>
             ) : (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={onCaptureScreen}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all duration-200"
-                >
-                  <Scissors className="w-3.5 h-3.5 text-brand-400" />
-                  Snipping Tool
-                </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl overflow-hidden focus-within:border-brand-500">
+                  <button
+                    type="button"
+                    onClick={onCaptureScreen}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer border-r border-slate-800"
+                    title="ถ่ายภาพหน้าจอ (Snipping Tool)"
+                  >
+                    <Scissors className="w-3.5 h-3.5 text-brand-400" />
+                    Snipping Tool
+                  </button>
+                  <select
+                    value={captureDelay}
+                    onChange={(e) => setCaptureDelay(parseInt(e.target.value))}
+                    className="px-1 py-1.5 bg-slate-900 text-slate-450 text-[10px] font-semibold border-none focus:outline-none focus:ring-0 cursor-pointer"
+                    title="ตั้งเวลาก่อนถ่ายภาพ (Delay)"
+                  >
+                    <option value={0}>⏱️ 0s</option>
+                    <option value={3}>⏱️ 3s</option>
+                    <option value={5}>⏱️ 5s</option>
+                    <option value={10}>⏱️ 10s</option>
+                  </select>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -234,6 +255,14 @@ export default function ImagePreview({
           ref={containerRef}
           className="relative flex-1 min-h-[260px] max-h-[360px] bg-slate-950/80 rounded-2xl overflow-hidden border border-slate-800/80 flex items-center justify-center p-3"
         >
+          {isCropping && (
+            <div className="absolute top-2 left-2 right-2 z-20 px-3 py-1.5 rounded-xl bg-brand-500/10 border border-brand-500/20 backdrop-blur-sm text-center animate-fade-in pointer-events-none">
+              <span className="text-[10px] md:text-xs text-brand-300 font-bold block">
+                ✨ ลากเพื่อเลือกตำแหน่งการถ่ายภาพ / Drag to select target area
+              </span>
+            </div>
+          )}
+
           <img
             ref={imgRef}
             src={previewUrl}

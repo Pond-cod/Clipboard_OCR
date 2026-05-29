@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, Image as ImageIcon, ClipboardPaste, Scissors } from 'lucide-react';
 
-export default function DropZone({ onFileSelect, onCaptureScreen }) {
+export default function DropZone({ onFileSelect, onCaptureScreen, captureDelay, setCaptureDelay }) {
   const fileInputRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
 
@@ -94,24 +94,37 @@ export default function DropZone({ onFileSelect, onCaptureScreen }) {
           <span className="h-[1px] w-8 bg-slate-800"></span>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
           <button
             type="button"
             onClick={handleClick}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 active:scale-95 text-slate-200 text-xs font-semibold hover:scale-105 transition-all duration-200 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 active:scale-95 text-slate-200 text-xs font-semibold hover:scale-105 transition-all duration-200 cursor-pointer"
           >
             <ImageIcon className="w-4 h-4 text-brand-400" />
             Browse Files
           </button>
 
-          <button
-            type="button"
-            onClick={onCaptureScreen}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-          >
-            <Scissors className="w-4 h-4" />
-            Snipping Tool (ถ่ายภาพหน้าจอ)
-          </button>
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl overflow-hidden focus-within:border-brand-500 transition-colors">
+            <button
+              type="button"
+              onClick={onCaptureScreen}
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 transition-all duration-200 cursor-pointer border-r border-slate-800"
+            >
+              <Scissors className="w-4 h-4" />
+              Snipping Tool (ถ่ายภาพหน้าจอ)
+            </button>
+            <select
+              value={captureDelay}
+              onChange={(e) => setCaptureDelay(parseInt(e.target.value))}
+              className="px-2 py-2.5 bg-slate-900 text-slate-300 text-xs font-semibold border-none focus:outline-none focus:ring-0 cursor-pointer"
+              title="ตั้งเวลาก่อนถ่ายภาพ (Capture Delay)"
+            >
+              <option value={0}>⏱️ No delay</option>
+              <option value={3}>⏱️ 3s delay</option>
+              <option value={5}>⏱️ 5s delay</option>
+              <option value={10}>⏱️ 10s delay</option>
+            </select>
+          </div>
         </div>
 
         <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider mt-2">

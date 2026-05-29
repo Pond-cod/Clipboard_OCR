@@ -19,6 +19,11 @@ export default function App() {
   const [durationMs, setDurationMs] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Snipping Tool Custom States
+  const [isCropping, setIsCropping] = useState(false);
+  const [captureDelay, setCaptureDelay] = useState(0); // 0 | 3 | 5 | 10 seconds
+  const [captureCountdown, setCaptureCountdown] = useState(null);
+
   // AI Precision Tuning States (Default active for near 100% accuracy)
   const [preprocess, setPreprocess] = useState(true);
   const [preprocessMode, setPreprocessMode] = useState('auto'); // 'auto' | 'enhance' | 'threshold'
@@ -100,6 +105,23 @@ export default function App() {
       video.autoplay = true;
       
       video.onloadedmetadata = () => {
+        let delayMs = captureDelay * 1000;
+        
+        if (delayMs > 0) {
+          let remaining = captureDelay;
+          setCaptureCountdown(remaining);
+          
+          const interval = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+              clearInterval(interval);
+              setCaptureCountdown(null);
+            } else {
+              setCaptureCountdown(remaining);
+            }
+          }, 1000);
+        }
+
         setTimeout(() => {
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth;
@@ -113,10 +135,10 @@ export default function App() {
             // Stop sharing screen
             stream.getTracks().forEach(track => track.stop());
             
-            // Feed into OCR select handler
-            handleImageSelect(capturedFile);
+            // Feed into OCR select handler with autoCrop=true
+            handleImageSelect(capturedFile, true);
           }, 'image/png');
-        }, 500); // 500ms safe delay
+        }, delayMs || 500); // 500ms safe fallback delay if 0
       };
     } catch (err) {
       console.warn('[Screen Capture Cancelled or Failed]:', err.message);
@@ -124,7 +146,7 @@ export default function App() {
   };
 
   // Generate URL preview and trigger OCR process
-  const handleImageSelect = (selectedFile) => {
+  const handleImageSelect = (selectedFile, autoCrop = false) => {
     if (!selectedFile) return;
 
     if (previewUrl) {
@@ -143,8 +165,15 @@ export default function App() {
     // Quick async pre-check diagnostics
     fetchImageDiagnostics(selectedFile);
 
-    // Trigger extraction on the original file
-    performOCR(selectedFile, selectedLanguages);
+    if (autoCrop) {
+      // Auto enter cropping mode immediately so user can choose the crop area/coordinates
+      setIsCropping(true);
+      setStatus('idle'); // keep status clean for preview
+    } else {
+      setIsCropping(false);
+      // Trigger extraction on the original file
+      performOCR(selectedFile, selectedLanguages);
+    }
   };
 
   // Triggered when user selects a specific crop coordinates region
@@ -404,7 +433,12 @@ export default function App() {
         <div className="flex-1 flex flex-col gap-6">
           {status === 'idle' ? (
             <div className="flex flex-col gap-4">
-              <DropZone onFileSelect={handleImageSelect} onCaptureScreen={handleCaptureScreen} />
+              <DropZone 
+                onFileSelect={handleImageSelect} 
+                onCaptureScreen={handleCaptureScreen}
+                captureDelay={captureDelay}
+                setCaptureDelay={setCaptureDelay}
+              />
               
               {/* Demo Action Trigger */}
               <div className="flex justify-center mt-2">
@@ -432,6 +466,10 @@ export default function App() {
                   imageAnalysis={imageAnalysis}
                   analysisLoading={analysisLoading}
                   onCaptureScreen={handleCaptureScreen}
+                  isCropping={isCropping}
+                  setIsCropping={setIsCropping}
+                  captureDelay={captureDelay}
+                  setCaptureDelay={setCaptureDelay}
                 />
               </div>
 
@@ -478,6 +516,22 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* Countdown Overlay for screen capture */}
+      {captureCountdown !== null && (
+        <div className="fixed inset-0 bg-[#070b14]/90 backdrop-blur-md flex flex-col items-center justify-center z-[9999] animate-fade-in p-4 text-center">
+          <div className="relative flex items-center justify-center">
+            <div className="absolute w-32 h-32 rounded-full border-4 border-brand-500/20 border-t-brand-500 animate-spin" />
+            <div className="w-24 h-24 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-4xl font-display font-bold text-white shadow-2xl">
+              {captureCountdown}
+            </div>
+          </div>
+          <h2 className="font-display font-semibold text-lg text-white mt-8">เตรียมหน้าจอของคุณให้พร้อม...</h2>
+          <p className="text-slate-400 text-xs mt-2 max-w-sm leading-relaxed">
+            ระบบกำลังถ่ายภาพหน้าจอที่คุณเลือก กรุณาเปิดหน้าต่างหรือเลื่อนไปยังตำแหน่งที่ต้องการ
+          </p>
+        </div>
+      )}
 
       {/* Persistent global keyboard tips */}
       <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 mt-8 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-[10px] gap-2">
