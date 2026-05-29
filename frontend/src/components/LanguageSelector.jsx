@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Globe, Check, Sliders, ChevronDown, ChevronUp, Zap, HelpCircle } from 'lucide-react';
+import { Globe, Check, Sliders, ChevronDown, ChevronUp, Zap, HelpCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function LanguageSelector({
   selectedLanguages,
   onChange,
   preprocess,
   onPreprocessChange,
+  preprocessMode,
+  onPreprocessModeChange,
   thresholdLevel,
   onThresholdChange,
   psm,
@@ -136,26 +138,60 @@ export default function LanguageSelector({
             </div>
             
             <p className="text-slate-400 text-xs leading-relaxed">
-              Auto-converts image to grayscale, applies a smart Lanczos3 2x scale to boost resolution (DPI), and filters colors into high-contrast black and white for near 100% character detection.
+              Auto-sharpens edges, scales small images to increase resolution (DPI), and enhances pixel contrast for near 100% character detection.
             </p>
 
             {preprocess && (
-              <div className="mt-2 p-3 bg-slate-950/40 rounded-xl border border-slate-900 flex flex-col gap-2">
-                <div className="flex justify-between text-xs font-medium">
-                  <span className="text-slate-400">Contrast Threshold Level:</span>
-                  <span className="text-brand-300 font-bold font-mono">{thresholdLevel}</span>
+              <div className="mt-2 flex flex-col gap-3">
+                {/* Preprocessing Mode Toggle */}
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950/60 rounded-xl border border-slate-900">
+                  <button
+                    type="button"
+                    onClick={() => onPreprocessModeChange('enhance')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                      preprocessMode === 'enhance'
+                        ? 'bg-brand-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    AI Smart Enhance
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPreprocessModeChange('threshold')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                      preprocessMode === 'threshold'
+                        ? 'bg-brand-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Strict Binarize
+                  </button>
                 </div>
-                <input
-                  type="range"
-                  min="100"
-                  max="180"
-                  value={thresholdLevel}
-                  onChange={(e) => onThresholdChange(parseInt(e.target.value))}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
-                />
-                <span className="text-[10px] text-slate-500">
-                  Tip: Use 120-140 for thin/standard texts, 140-160 for thick/glow texts.
-                </span>
+
+                {preprocessMode === 'enhance' ? (
+                  <span className="text-[10px] text-slate-500 bg-slate-900/50 p-2 rounded border border-slate-900">
+                    ℹ️ **AI Smart Enhance (Recommended)**: Keeps all texts visible, including light grey or low-contrast numbers on white card backgrounds.
+                  </span>
+                ) : (
+                  <div className="p-3 bg-slate-950/40 rounded-xl border border-slate-900 flex flex-col gap-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span className="text-slate-400">Strict Contrast Threshold:</span>
+                      <span className="text-brand-300 font-bold font-mono">{thresholdLevel}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="100"
+                      max="180"
+                      value={thresholdLevel}
+                      onChange={(e) => onThresholdChange(parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                    />
+                    <span className="text-[10px] text-slate-500">
+                      Warning: High levels may erase thin light-grey numbers.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

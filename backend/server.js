@@ -54,10 +54,22 @@ async function preprocessImage(buffer, options = {}) {
     // 2. Grayscale: Eliminate color noise
     pipeline = pipeline.greyscale();
 
-    // 3. High-Contrast threshold binarization
-    // (Values between 120-140 generally give optimal text-to-background contrast)
-    const thresholdVal = parseInt(options.thresholdLevel) || 135;
-    pipeline = pipeline.threshold(thresholdVal);
+    // 3. Dynamic Preprocessing Modes
+    const mode = options.preprocessMode || 'enhance'; // 'enhance' | 'threshold'
+    
+    if (mode === 'threshold') {
+      // High-Contrast threshold binarization (strict black/white)
+      const thresholdVal = parseInt(options.thresholdLevel) || 135;
+      pipeline = pipeline.threshold(thresholdVal);
+    } else {
+      // AI Smart Enhance: Normalizes dynamic range and sharpens edges.
+      // This is extremely safe and prevents low-contrast text (e.g. light grey on white) from disappearing!
+      pipeline = pipeline.normalize().sharpen({
+        sigma: 1.0,
+        m1: 2.0,
+        m2: 2.0
+      });
+    }
 
     // 4. Export as highly optimized PNG buffer
     return await pipeline.toFormat('png').toBuffer();
@@ -145,15 +157,19 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
 
     // 3. Read custom tuning flags from request body
     const doPreprocess = req.body.preprocess === 'true';
+    const preprocessMode = req.body.preprocessMode || 'enhance'; // 'enhance' | 'threshold'
     const thresholdLevel = req.body.thresholdLevel || '135';
     const psmMode = req.body.psm || '3'; // Default to '3' (Automatic page segmentation)
 
-    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes), Languages: ${lang}, Preprocess: ${doPreprocess}, PSM: ${psmMode}`);
+    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes), Languages: ${lang}, Preprocess: ${doPreprocess}, Mode: ${preprocessMode}, PSM: ${psmMode}`);
 
     // 4. Select buffer to analyze (apply pre-processing pipeline if requested)
     let finalBuffer = req.file.buffer;
     if (doPreprocess) {
-      finalBuffer = await preprocessImage(req.file.buffer, { thresholdLevel });
+      finalBuffer = await preprocessImage(req.file.buffer, { 
+        preprocessMode,
+        thresholdLevel 
+      });
     }
 
     // 5. Process buffer using Tesseract configured with target options

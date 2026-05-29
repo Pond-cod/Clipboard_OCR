@@ -37,15 +37,15 @@ export default function ResultViewer({ text, confidence, durationMs, onTextChang
   const wordCount = text ? text.trim().split(/\s+/).filter(Boolean).length : 0;
   const charCount = text ? text.length : 0;
 
-  // Language auto-validation from extracted character set ranges
+  // Language auto-validation from extracted character set ranges (Text-only for Windows flag compatibility)
   const detectLanguages = (str) => {
     if (!str) return [];
     const list = [];
     const hasThai = /[\u0e00-\u0e7f]/.test(str);
     const hasEnglish = /[a-zA-Z]/.test(str);
     
-    if (hasThai) list.push({ code: 'TH', name: 'Thai', icon: '🇹🇭' });
-    if (hasEnglish) list.push({ code: 'EN', name: 'English', icon: '🇬🇧' });
+    if (hasThai) list.push({ code: 'TH', name: 'Thai', color: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' });
+    if (hasEnglish) list.push({ code: 'EN', name: 'English', color: 'bg-brand-500/10 border-brand-500/20 text-brand-400' });
     
     return list;
   };
@@ -62,15 +62,14 @@ export default function ResultViewer({ text, confidence, durationMs, onTextChang
             
             {/* Auto-detected Language Validation Badges */}
             {text && detectedLangs.length > 0 && (
-              <div className="flex gap-1 ml-1">
+              <div className="flex gap-1.5 ml-1.5">
                 {detectedLangs.map((lang) => (
                   <span 
                     key={lang.code} 
                     title={`Verified ${lang.name} character set in output`}
-                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[10px] font-bold select-none cursor-help"
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border select-none cursor-help ${lang.color}`}
                   >
-                    <span>{lang.icon}</span>
-                    <span>{lang.code}</span>
+                    {lang.name}
                   </span>
                 ))}
               </div>

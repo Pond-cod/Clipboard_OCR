@@ -21,6 +21,7 @@ export default function App() {
 
   // AI Precision Tuning States (Default active for near 100% accuracy)
   const [preprocess, setPreprocess] = useState(true);
+  const [preprocessMode, setPreprocessMode] = useState('enhance'); // 'enhance' | 'threshold'
   const [thresholdLevel, setThresholdLevel] = useState(135);
   const [psm, setPsm] = useState('3');
 
@@ -52,7 +53,7 @@ export default function App() {
     return () => {
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [selectedLanguages, preprocess, thresholdLevel, psm]); // re-bind when tuning changes
+  }, [selectedLanguages, preprocess, preprocessMode, thresholdLevel, psm]); // re-bind when tuning changes
 
   // Generate URL preview and trigger OCR process
   const handleImageSelect = (selectedFile) => {
@@ -117,6 +118,7 @@ export default function App() {
     
     // Resolve dynamic values to prevent synchronization latency
     const activePreprocess = customOptions.hasOwnProperty('preprocess') ? customOptions.preprocess : preprocess;
+    const activePreprocessMode = customOptions.hasOwnProperty('preprocessMode') ? customOptions.preprocessMode : preprocessMode;
     const activeThreshold = customOptions.hasOwnProperty('thresholdLevel') ? customOptions.thresholdLevel : thresholdLevel;
     const activePsm = customOptions.hasOwnProperty('psm') ? customOptions.psm : psm;
 
@@ -124,6 +126,7 @@ export default function App() {
     formData.append('image', targetFile);
     formData.append('languages', langs.join('+'));
     formData.append('preprocess', activePreprocess ? 'true' : 'false');
+    formData.append('preprocessMode', activePreprocessMode);
     formData.append('thresholdLevel', activeThreshold.toString());
     formData.append('psm', activePsm);
 
@@ -165,6 +168,13 @@ export default function App() {
     setPreprocess(val);
     if (activeFile) {
       performOCR(activeFile, selectedLanguages, { preprocess: val });
+    }
+  };
+
+  const handlePreprocessModeChange = (val) => {
+    setPreprocessMode(val);
+    if (activeFile) {
+      performOCR(activeFile, selectedLanguages, { preprocessMode: val });
     }
   };
 
@@ -269,6 +279,8 @@ export default function App() {
           }}
           preprocess={preprocess}
           onPreprocessChange={handlePreprocessChange}
+          preprocessMode={preprocessMode}
+          onPreprocessModeChange={handlePreprocessModeChange}
           thresholdLevel={thresholdLevel}
           onThresholdChange={handleThresholdChange}
           psm={psm}
@@ -352,7 +364,7 @@ export default function App() {
 
       {/* Persistent global keyboard tips */}
       <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 mt-8 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-[10px] gap-2">
-        <div>Smart Clipboard OCR v1.2.0 — ROI Regions & Spellchecking active</div>
+        <div>Smart Clipboard OCR v1.3.0 — AI Smart Enhance & Cropping active</div>
         <div className="flex items-center gap-1.5 bg-slate-900/30 px-3 py-1 rounded-full border border-slate-900/60">
           <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
           <span>Tip: paste screenshot instantly from snip-tool at any moment!</span>
