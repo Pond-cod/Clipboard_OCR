@@ -11,120 +11,102 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ─── Gemini AI Client ────────────────────────────────────────────────────────
+// ─── Gemini AI Client (initialized ONCE at startup, never mutated per-request) ─
 const geminiApiKey = process.env.GEMINI_API_KEY;
-let genAI = null;
-let visionModel = null;
+const genAI = geminiApiKey ? new GoogleGenerativeAI(geminiApiKey) : null;
+const visionModel = genAI
+  ? genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  : null;
 
-if (geminiApiKey) {
-  console.log('🤖 [Gemini Vision] API Key detected — using Gemini as PRIMARY OCR engine.');
-  genAI = new GoogleGenerativeAI(geminiApiKey);
-  // gemini-1.5-flash supports image input and is fast + accurate
-  visionModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+if (genAI) {
+  console.log('🤖 [Gemini Vision] API Key detected — PRIMARY OCR engine = Gemini Vision.');
 } else {
-  console.log('⚠️  [Gemini Vision] No GEMINI_API_KEY in .env — falling back to Tesseract.js OCR.');
+  console.log('⚠️  [Gemini Vision] No GEMINI_API_KEY — falling back to Tesseract.js.');
 }
 
-// ─── CORS ────────────────────────────────────────────────────────────────────
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'] }));
 app.use(express.json());
 
-// ─── Multer (memory storage, max 10 MB) ──────────────────────────────────────
+// ─── Multer (memory, max 10 MB) ───────────────────────────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Invalid file type. Only image files are supported.'));
-  }
+  fileFilter: (_, file, cb) =>
+    file.mimetype.startsWith('image/')
+      ? cb(null, true)
+      : cb(new Error('Invalid file type — only images are supported.')),
 });
 
-// ─── Sharp Pre-processing (used for Tesseract fallback) ──────────────────────
+// ─── Sharp Pre-processing (Tesseract fallback only) ───────────────────────────
 async function preprocessImage(buffer, options = {}) {
   try {
-    let pipeline = sharp(buffer);
-    const metadata = await pipeline.metadata();
-
-    // Upscale small images to improve text density
-    if (metadata.width && metadata.width < 1200) {
-      pipeline = pipeline.resize({
-        width: Math.round(metadata.width * 2),
-        kernel: sharp.kernel.lanczos3
-      });
+    let p = sharp(buffer);
+    const meta = await p.metadata();
+    if (meta.width && meta.width < 1200) {
+      p = p.resize({ width: Math.round(meta.width * 2), kernel: sharp.kernel.lanczos3 });
     }
-
-    pipeline = pipeline.greyscale();
-
-    const mode = options.preprocessMode || 'enhance';
-    if (mode === 'threshold') {
-      const thresholdVal = parseInt(options.thresholdLevel) || 135;
-      pipeline = pipeline.threshold(thresholdVal);
+    p = p.greyscale();
+    if (options.preprocessMode === 'threshold') {
+      p = p.threshold(parseInt(options.thresholdLevel) || 135);
     } else {
-      // Smart Enhance: normalise dynamic range + sharpen edges
-      pipeline = pipeline.normalize().sharpen({ sigma: 1.0, m1: 2.0, m2: 2.0 });
+      p = p.normalize().sharpen({ sigma: 1.0, m1: 2.0, m2: 2.0 });
     }
-
-    return await pipeline.toFormat('png').toBuffer();
+    return await p.toFormat('png').toBuffer();
   } catch (err) {
-    console.warn('[Preprocessing] Falling back to raw buffer:', err.message);
+    console.warn('[Sharp] Pre-processing failed, using raw buffer:', err.message);
     return buffer;
   }
 }
 
-// ─── Convert buffer to base64 data URL for Gemini inline_data ────────────────
-function bufferToBase64(buffer, mimeType = 'image/png') {
-  return buffer.toString('base64');
-}
-
-// ─── PRIMARY: Gemini Vision OCR ──────────────────────────────────────────────
+// ─── PRIMARY: Gemini Vision OCR ───────────────────────────────────────────────
 async function ocrWithGemini(imageBuffer, mimeType, lang) {
-  const langHint = lang.includes('tha')
-    ? 'The image may contain Thai and/or English text.'
-    : 'The image contains English text.';
+  const isMultilang = lang.includes('tha') && lang.includes('eng');
+  const isThai = lang.includes('tha');
 
-  const prompt = `You are a precise OCR (Optical Character Recognition) engine.
+  let langInstruction = '';
+  if (isMultilang) {
+    langInstruction = 'The image may contain both Thai and English text. Preserve both languages exactly as written.';
+  } else if (isThai) {
+    langInstruction = 'The image contains Thai text. Preserve it exactly as written.';
+  } else {
+    langInstruction = 'The image contains English text. Preserve it exactly as written.';
+  }
 
-Your ONLY task is to extract ALL visible text from this image exactly as it appears.
+  const prompt = `You are a precise OCR (Optical Character Recognition) system.
+Your ONLY job is to extract and return every visible text character from the image.
 
-Rules you MUST follow:
-1. Read and output every word, number, and symbol you can see — do NOT skip anything.
-2. Preserve the original language. Do NOT translate anything (Thai stays Thai, English stays English).
-3. Preserve the original line breaks and layout as closely as possible.
-4. Do NOT add explanations, comments, greetings, or extra text.
-5. Do NOT wrap output in markdown code blocks or quotes.
-6. If two columns of text appear side-by-side, put a tab character between them.
-7. Remove decorative noise (dashes, repeated symbols that form borders) but keep real text.
-8. Output ONLY the raw extracted text — nothing else.
+STRICT RULES:
+1. Output ONLY the raw text you see in the image — nothing else.
+2. Do NOT translate, summarize, explain, or reformat the text.
+3. Do NOT add greetings, labels, or markdown code blocks.
+4. Preserve the original line structure as faithfully as possible.
+5. Keep Thai text in Thai script and English text in English — do NOT mix or convert.
+6. If text appears in columns (left and right side), separate them with a tab character.
+7. Remove only obvious decorative noise (dashed border lines, repeating symbols). Keep all real text.
+8. Output every word, number, and punctuation mark that is visible.
 
-${langHint}`;
+${langInstruction}
+
+Begin extraction now:`;
 
   const result = await visionModel.generateContent([
     { text: prompt },
     {
       inlineData: {
         mimeType: mimeType || 'image/png',
-        data: bufferToBase64(imageBuffer)
-      }
-    }
+        data: imageBuffer.toString('base64'),
+      },
+    },
   ]);
 
   let text = result.response.text();
-
-  // Strip accidental markdown wrappers
-  text = text
-    .replace(/^```[a-zA-Z]*\n?/, '')
-    .replace(/\n?```$/, '')
-    .trim();
-
+  // Strip any accidental markdown wrapper
+  text = text.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
   return text;
 }
 
-// ─── FALLBACK: Tesseract.js OCR ──────────────────────────────────────────────
+// ─── FALLBACK: Tesseract.js OCR ───────────────────────────────────────────────
 function reconstructLayout(lines) {
   if (!lines || lines.length === 0) return '';
   let out = '';
@@ -144,8 +126,7 @@ function reconstructLayout(lines) {
         const gap = cur.bbox.x0 - prev.bbox.x1;
         const charW = (prev.bbox.x1 - prev.bbox.x0) / Math.max(1, prev.text.length);
         if (gap > 45 && gap > charW * 4.0) {
-          const spaces = Math.min(28, Math.max(4, Math.round(gap / charW)));
-          lineStr += ' '.repeat(spaces) + wordText;
+          lineStr += ' '.repeat(Math.min(28, Math.max(4, Math.round(gap / charW)))) + wordText;
         } else if (gap > charW * 1.2) {
           lineStr += ' ' + wordText;
         } else {
@@ -162,26 +143,23 @@ function correctOcrText(text) {
   if (!text) return text;
   let t = text;
   const rules = [
-    { p: /เเ/g, r: 'แ' },
-    { p: /โอนเเงิน/g, r: 'โอนเงิน' },
-    { p: /โอนเฃิน/g, r: 'โอนเงิน' },
-    { p: /รายรับคงหปล/g, r: 'รายรับคงเหลือ' },
-    { p: /ยอดเงินคงหปล/g, r: 'ยอดเงินคงเหลือ' },
-    { p: /รายวาย/g, r: 'รายจ่าย' },
-    { p: /เทือหนว/g, r: 'ทั้งหมด' },
-    { p: /รองรน/g, r: 'รองรับ' },
-    { p: /วันที\b/g, r: 'วันที่' },
-    { p: /จํานวนเงิน/g, r: 'จำนวนเงิน' },
-    { p: /ช้อมูล/g, r: 'ข้อมูล' },
-    { p: /เสร็จสิ้บ/g, r: 'เสร็จสิ้น' },
-    { p: /สําเร็จ/g, r: 'สำเร็จ' },
-    { p: /บัญชีู/g, r: 'บัญชี' },
-    { p: /ใข้/g, r: 'ใช้' },
-    { p: /ผู้้/g, r: 'ผู้' },
-    { p: /ค่่า/g, r: 'ค่า' },
-    { p: /สลิิป/g, r: 'สลิป' },
+    [/เเ/g, 'แ'],
+    [/โอนเเงิน/g, 'โอนเงิน'],
+    [/โอนเฃิน/g, 'โอนเงิน'],
+    [/รายรับคงหปล/g, 'รายรับคงเหลือ'],
+    [/ยอดเงินคงหปล/g, 'ยอดเงินคงเหลือ'],
+    [/รายวาย/g, 'รายจ่าย'],
+    [/เทือหนว/g, 'ทั้งหมด'],
+    [/วันที\b/g, 'วันที่'],
+    [/จํานวนเงิน/g, 'จำนวนเงิน'],
+    [/ช้อมูล/g, 'ข้อมูล'],
+    [/เสร็จสิ้บ/g, 'เสร็จสิ้น'],
+    [/สําเร็จ/g, 'สำเร็จ'],
+    [/ใข้/g, 'ใช้'],
+    [/ผู้้/g, 'ผู้'],
+    [/ค่่า/g, 'ค่า'],
   ];
-  for (const { p, r } of rules) t = t.replace(p, r);
+  for (const [p, r] of rules) t = t.replace(p, r);
   return t;
 }
 
@@ -190,16 +168,18 @@ async function ocrWithTesseract(buffer, lang, psmMode) {
     tessedit_pageseg_mode: psmMode,
     logger: (m) => {
       if (m.status === 'recognizing text') {
-        process.stdout.write(`\r[Tesseract] ${(m.progress * 100).toFixed(0)}%`);
+        process.stdout.write(`\r[Tesseract] ${(m.progress * 100).toFixed(0)}%  `);
       }
-    }
+    },
   });
-  console.log(''); // newline after progress
-  const structured = reconstructLayout(data.lines);
-  return { text: correctOcrText(structured), confidence: data.confidence };
+  process.stdout.write('\n');
+  return {
+    text: correctOcrText(reconstructLayout(data.lines)),
+    confidence: data.confidence,
+  };
 }
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_, res) => {
   res.json({
     status: 'ok',
@@ -207,14 +187,14 @@ app.get('/api/health', (_, res) => {
     services: {
       primaryOcr: genAI ? 'gemini-vision' : 'tesseract.js',
       preprocessor: 'sharp',
-      geminiActive: genAI !== null
-    }
+      geminiActive: genAI !== null,
+    },
   });
 });
 
-// ─── Main Extract-Text Endpoint ───────────────────────────────────────────────
+// ─── Main Extract-Text Endpoint ────────────────────────────────────────────────
 app.post('/api/extract-text', upload.single('image'), async (req, res) => {
-  const startTime = Date.now();
+  const t0 = Date.now();
 
   try {
     if (!req.file) {
@@ -229,90 +209,86 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
     const preprocessMode = req.body.preprocessMode || 'enhance';
     const thresholdLevel = req.body.thresholdLevel || '135';
     const psmMode = req.body.psm || '3';
-
     const mimeType = req.file.mimetype || 'image/png';
 
-    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes) | Lang: ${lang} | Engine: ${genAI ? 'Gemini Vision' : 'Tesseract'}`);
+    console.log(
+      `\n[OCR] "${req.file.originalname}" | ${req.file.size}B | lang:${lang} | engine:${genAI ? 'Gemini' : 'Tesseract'}`
+    );
 
     let extractedText = '';
     let confidence = null;
     let engineUsed = '';
 
-    // ── Path A: Gemini Vision (Primary) ────────────────────────────────────
-    if (genAI) {
+    // ── Path A: Gemini Vision (Primary) ───────────────────────────────────────
+    if (visionModel) {
       try {
-        console.log('[Gemini Vision] Sending image to Gemini for OCR...');
+        console.log('[Gemini Vision] Sending image for OCR...');
         extractedText = await ocrWithGemini(req.file.buffer, mimeType, lang);
         engineUsed = 'gemini-vision';
-        confidence = null; // Gemini doesn't return a confidence score
-        console.log(`[Gemini Vision] Done. Extracted ${extractedText.length} characters.`);
-      } catch (geminiErr) {
-        console.error('[Gemini Vision] Failed, falling back to Tesseract:', geminiErr.message);
-        // Fall through to Tesseract
-        genAI = null; // Disable for this request so we fall to Tesseract below
+        console.log(`[Gemini Vision] ✓ ${extractedText.length} chars extracted.`);
+      } catch (err) {
+        // Log the error but do NOT mutate visionModel — fall through to Tesseract
+        console.error('[Gemini Vision] ✗ Failed:', err.message);
+        console.log('[Gemini Vision] Falling back to Tesseract for this request...');
+        engineUsed = ''; // mark as not set so Tesseract runs
       }
     }
 
-    // ── Path B: Tesseract (Fallback / no API key) ───────────────────────────
-    if (!genAI || engineUsed === '') {
-      console.log('[Tesseract] Running OCR...');
-      let buffer = req.file.buffer;
+    // ── Path B: Tesseract (Fallback) ──────────────────────────────────────────
+    if (engineUsed === '') {
+      let buf = req.file.buffer;
       if (doPreprocess) {
-        buffer = await preprocessImage(buffer, { preprocessMode, thresholdLevel });
+        buf = await preprocessImage(buf, { preprocessMode, thresholdLevel });
       }
-      const result = await ocrWithTesseract(buffer, lang, psmMode);
+      const result = await ocrWithTesseract(buf, lang, psmMode);
       extractedText = result.text;
       confidence = result.confidence;
       engineUsed = 'tesseract';
+      console.log(`[Tesseract] ✓ Confidence: ${confidence?.toFixed(1)}%`);
     }
 
-    const duration = Date.now() - startTime;
-    console.log(`[OCR Done] Engine: ${engineUsed} | Length: ${extractedText.length} chars | ${duration}ms`);
+    const dur = Date.now() - t0;
+    console.log(`[OCR Done] ${engineUsed} | ${dur}ms`);
 
     return res.json({
       success: true,
       text: extractedText,
-      confidence: confidence,
+      confidence,
       language: lang,
-      durationMs: duration,
+      durationMs: dur,
       engineUsed,
       tuning: {
         preprocessed: doPreprocess,
         preprocessModeUsed: doPreprocess ? preprocessMode : null,
         thresholdUsed: doPreprocess ? thresholdLevel : null,
         psmUsed: engineUsed === 'tesseract' ? psmMode : null,
-        geminiUsed: engineUsed === 'gemini-vision'
+        geminiUsed: engineUsed === 'gemini-vision',
       },
       metadata: {
         filename: req.file.originalname,
         sizeBytes: req.file.size,
         mimetype: req.file.mimetype,
-      }
+      },
     });
-
   } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`[OCR Error] ${duration}ms:`, error);
+    const dur = Date.now() - t0;
+    console.error(`[OCR Error] ${dur}ms:`, error.message);
     return res.status(500).json({ success: false, error: error.message || 'Text extraction failed.' });
   }
 });
 
-// ─── Multer Error Handler ─────────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ success: false, error: 'File too large. Max 10MB.' });
-    }
-    return res.status(400).json({ success: false, error: `Upload error: ${err.message}` });
+// ─── Multer Error Handler ──────────────────────────────────────────────────────
+app.use((err, req, res, _next) => {
+  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ success: false, error: 'File too large. Maximum is 10MB.' });
   }
   return res.status(500).json({ success: false, error: err.message || 'Internal server error.' });
 });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+// ─── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log('===============================================');
+  console.log('═══════════════════════════════════════════════');
   console.log(`🚀 Smart Clipboard OCR — Port ${PORT}`);
-  console.log(`🤖 OCR Engine: ${genAI ? '✅ Gemini Vision (Primary)' : '⚠️  Tesseract.js (Fallback — add GEMINI_API_KEY)'}`);
-  console.log(`📂 Max upload: 10MB`);
-  console.log('===============================================');
+  console.log(`🤖 Engine: ${genAI ? '✅ Gemini Vision (Primary)' : '⚠️  Tesseract (no API key)'}`);
+  console.log('═══════════════════════════════════════════════');
 });
