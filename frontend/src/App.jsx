@@ -21,12 +21,15 @@ export default function App() {
 
   // AI Precision Tuning States (Default active for near 100% accuracy)
   const [preprocess, setPreprocess] = useState(true);
-  const [preprocessMode, setPreprocessMode] = useState('enhance'); // 'enhance' | 'threshold'
+  const [preprocessMode, setPreprocessMode] = useState('auto'); // 'auto' | 'enhance' | 'threshold'
   const [thresholdLevel, setThresholdLevel] = useState(135);
   const [psm, setPsm] = useState('3');
   
-  // Gemini AI proofreader state
-  const [useGemini, setUseGemini] = useState(false);
+  // Gemini Engine & Post-Processing states
+  const [ocrEngine, setOcrEngine] = useState('gemini'); // 'gemini' | 'tesseract' | 'auto'
+  const [useGemini, setUseGemini] = useState(true); // default true for AI Proofreader formatting
+  const [imageAnalysis, setImageAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   // Setup Global Paste Interception Listener
   useEffect(() => {
@@ -58,6 +61,28 @@ export default function App() {
     };
   }, [selectedLanguages, preprocess, preprocessMode, thresholdLevel, psm, useGemini]); // re-bind when tuning changes
 
+  // Fetch image diagnostics pre-check
+  const fetchImageDiagnostics = async (targetFile) => {
+    if (!targetFile) return;
+    setAnalysisLoading(true);
+    const formData = new FormData();
+    formData.append('image', targetFile);
+    try {
+      const response = await fetch('http://localhost:5000/api/pre-check', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.success && data.analysis) {
+        setImageAnalysis(data.analysis);
+      }
+    } catch (err) {
+      console.warn('[Diagnostics Error]:', err.message);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   // Generate URL preview and trigger OCR process
   const handleImageSelect = (selectedFile) => {
     if (!selectedFile) return;
@@ -73,7 +98,11 @@ export default function App() {
     setConfidence(null);
     setDurationMs(null);
     setErrorMessage('');
+    setImageAnalysis(null);
     
+    // Quick async pre-check diagnostics
+    fetchImageDiagnostics(selectedFile);
+
     // Trigger extraction on the original file
     performOCR(selectedFile, selectedLanguages);
   };
@@ -90,6 +119,10 @@ export default function App() {
     setConfidence(null);
     setDurationMs(null);
     setErrorMessage('');
+    setImageAnalysis(null);
+
+    // Quick async pre-check diagnostics
+    fetchImageDiagnostics(croppedFile);
 
     // Trigger extraction on the cropped file
     performOCR(croppedFile, selectedLanguages);
@@ -109,6 +142,10 @@ export default function App() {
     setConfidence(null);
     setDurationMs(null);
     setErrorMessage('');
+    setImageAnalysis(null);
+
+    // Quick async pre-check diagnostics
+    fetchImageDiagnostics(file);
 
     // Trigger extraction back on the original file
     performOCR(file, selectedLanguages);
@@ -124,6 +161,7 @@ export default function App() {
     const activePreprocessMode = customOptions.hasOwnProperty('preprocessMode') ? customOptions.preprocessMode : preprocessMode;
     const activeThreshold = customOptions.hasOwnProperty('thresholdLevel') ? customOptions.thresholdLevel : thresholdLevel;
     const activePsm = customOptions.hasOwnProperty('psm') ? customOptions.psm : psm;
+    const activeOcrEngine = customOptions.hasOwnProperty('ocrEngine') ? customOptions.ocrEngine : ocrEngine;
     const activeUseGemini = customOptions.hasOwnProperty('useGemini') ? customOptions.useGemini : useGemini;
 
     const formData = new FormData();
@@ -133,6 +171,7 @@ export default function App() {
     formData.append('preprocessMode', activePreprocessMode);
     formData.append('thresholdLevel', activeThreshold.toString());
     formData.append('psm', activePsm);
+    formData.append('ocrEngine', activeOcrEngine);
     formData.append('useGemini', activeUseGemini ? 'true' : 'false');
 
     try {
@@ -150,6 +189,9 @@ export default function App() {
       setOcrText(data.text || '');
       setConfidence(data.confidence || 0);
       setDurationMs(data.durationMs || 0);
+      if (data.imageAnalysis) {
+        setImageAnalysis(data.imageAnalysis);
+      }
       setStatus('success');
 
     } catch (error) {
@@ -197,6 +239,13 @@ export default function App() {
     }
   };
 
+  const handleOcrEngineChange = (val) => {
+    setOcrEngine(val);
+    if (activeFile) {
+      performOCR(activeFile, selectedLanguages, { ocrEngine: val });
+    }
+  };
+
   const handleUseGeminiChange = (val) => {
     setUseGemini(val);
     if (activeFile) {
@@ -216,6 +265,7 @@ export default function App() {
     setConfidence(null);
     setDurationMs(null);
     setErrorMessage('');
+    setImageAnalysis(null);
     setStatus('idle');
   };
 
@@ -297,6 +347,8 @@ export default function App() {
           onThresholdChange={handleThresholdChange}
           psm={psm}
           onPsmChange={handlePsmChange}
+          ocrEngine={ocrEngine}
+          onOcrEngineChange={handleOcrEngineChange}
           useGemini={useGemini}
           onUseGeminiChange={handleUseGeminiChange}
         />
@@ -330,6 +382,8 @@ export default function App() {
                   status={status}
                   onCropApply={handleCropApply}
                   onRestoreFull={handleRestoreFull}
+                  imageAnalysis={imageAnalysis}
+                  analysisLoading={analysisLoading}
                 />
               </div>
 

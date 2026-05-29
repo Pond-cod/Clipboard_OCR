@@ -1,7 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, FileText, Crop, RefreshCcw, Check, Sparkles } from 'lucide-react';
 
-export default function ImagePreview({ file, previewUrl, onClear, status, onCropApply, onRestoreFull }) {
+export default function ImagePreview({ 
+  file, 
+  previewUrl, 
+  onClear, 
+  status, 
+  onCropApply, 
+  onRestoreFull,
+  imageAnalysis,
+  analysisLoading
+}) {
   const imgRef = useRef(null);
   const containerRef = useRef(null);
   
@@ -307,6 +316,85 @@ export default function ImagePreview({ file, previewUrl, onClear, status, onCrop
             >
               Cancel
             </button>
+          </div>
+        )}
+
+        {/* Image Quality Diagnostics Panel ("ตรวจสอบคุณภาพรูปภาพ") */}
+        {analysisLoading && (
+          <div className="mt-4 p-4 rounded-2xl bg-slate-950/30 border border-slate-900/60 flex flex-col gap-2.5 animate-pulse">
+            <div className="flex justify-between items-center">
+              <div className="h-3 w-32 bg-slate-800 rounded" />
+              <div className="h-3 w-16 bg-slate-800 rounded" />
+            </div>
+            <div className="h-1.5 w-full bg-slate-900 rounded-full" />
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <div className="h-7 bg-slate-900/60 rounded-xl border border-slate-900/40" />
+              <div className="h-7 bg-slate-900/60 rounded-xl border border-slate-900/40" />
+            </div>
+          </div>
+        )}
+
+        {imageAnalysis && !analysisLoading && (
+          <div className="mt-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800/80 flex flex-col gap-3 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Image Pre-Check Status</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  imageAnalysis.qualityScore >= 80 ? 'bg-emerald-500' :
+                  imageAnalysis.qualityScore >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                }`} />
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  Score: <strong className="text-slate-200">{imageAnalysis.qualityScore}/100</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Quality Score Bar */}
+            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${
+                  imageAnalysis.qualityScore >= 80 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' :
+                  imageAnalysis.qualityScore >= 50 ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.3)]' :
+                  'bg-rose-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                }`}
+                style={{ width: `${imageAnalysis.qualityScore}%` }}
+              />
+            </div>
+
+            {/* Specs checklist grid */}
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-900/80 flex items-center justify-between text-[10px]">
+                <span className="text-slate-500">Dimensions</span>
+                <span className="text-slate-300 font-semibold font-mono">{imageAnalysis.width}×{imageAnalysis.height}</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-900/80 flex items-center justify-between text-[10px]">
+                <span className="text-slate-500">Background</span>
+                <span className={`font-semibold ${imageAnalysis.isDark ? 'text-indigo-400' : 'text-slate-400'}`}>
+                  {imageAnalysis.isDark ? '🌙 Dark (Auto-Invert)' : '☀️ Normal'}
+                </span>
+              </div>
+            </div>
+
+            {/* Issues or Suggestions */}
+            {(imageAnalysis.issues?.length > 0 || imageAnalysis.suggestions?.length > 0) && (
+              <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-900">
+                {imageAnalysis.issues?.map((issue, idx) => (
+                  <div key={`issue-${idx}`} className="flex items-start gap-1.5 text-[10px] text-rose-300 leading-normal">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                    <span>{issue}</span>
+                  </div>
+                ))}
+                {imageAnalysis.suggestions?.map((sug, idx) => (
+                  <div key={`sug-${idx}`} className="flex items-start gap-1.5 text-[10px] text-emerald-300/90 leading-normal">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                    <span>{sug}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

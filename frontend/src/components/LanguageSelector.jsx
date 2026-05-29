@@ -12,6 +12,8 @@ export default function LanguageSelector({
   onThresholdChange,
   psm,
   onPsmChange,
+  ocrEngine,
+  onOcrEngineChange,
   useGemini,
   onUseGeminiChange
 }) {
@@ -115,6 +117,69 @@ export default function LanguageSelector({
         })}
       </div>
 
+      {/* Primary OCR Engine Selection */}
+      <div className="mb-4 p-4 bg-slate-950/40 rounded-2xl border border-slate-900 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-brand-400 animate-pulse" />
+          <span className="text-xs font-bold text-white uppercase tracking-wider font-display">Primary OCR Engine</span>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Gemini Engine */}
+          <button
+            type="button"
+            onClick={() => onOcrEngineChange('gemini')}
+            className={`flex items-start gap-3 p-4 rounded-xl border text-left cursor-pointer transition-all duration-200 ${
+              ocrEngine === 'gemini'
+                ? 'bg-brand-500/10 border-brand-500/50 text-white shadow-md'
+                : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-900/80 hover:text-slate-300'
+            }`}
+          >
+            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 ${
+              ocrEngine === 'gemini' ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-600 text-transparent'
+            }`}>
+              {ocrEngine === 'gemini' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+            </div>
+            <div className="flex-1">
+              <span className="text-xs font-semibold block text-slate-100 flex items-center gap-1.5">
+                Gemini Vision v2.0 (AI Cloud)
+                <span className="text-[8px] font-bold bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                  Recommended
+                </span>
+              </span>
+              <span className="text-[10px] text-slate-500 mt-1 block leading-normal">
+                100% accurate. Reconstructs columns, keeps tabular grid lines, and automatically formats banking slips.
+              </span>
+            </div>
+          </button>
+
+          {/* Tesseract Engine */}
+          <button
+            type="button"
+            onClick={() => onOcrEngineChange('tesseract')}
+            className={`flex items-start gap-3 p-4 rounded-xl border text-left cursor-pointer transition-all duration-200 ${
+              ocrEngine === 'tesseract'
+                ? 'bg-indigo-500/10 border-indigo-500/50 text-white shadow-md'
+                : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-900/80 hover:text-slate-300'
+            }`}
+          >
+            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 ${
+              ocrEngine === 'tesseract' ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-600 text-transparent'
+            }`}>
+              {ocrEngine === 'tesseract' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+            </div>
+            <div className="flex-1">
+              <span className="text-xs font-semibold block text-slate-100">
+                Tesseract.js Multi-Pass (Offline)
+              </span>
+              <span className="text-[10px] text-slate-500 mt-1 block leading-normal">
+                100% free and local. Runs in-browser/server. Uses 3 processing strategies to maximize confidence.
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* Collapsible Advanced Fine-Tuning Panel */}
       {showAdvanced && (
         <div className="mt-4 pt-4 border-t border-slate-800/80 animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-6 bg-slate-950/20 p-5 rounded-2xl border border-slate-900">
@@ -145,7 +210,18 @@ export default function LanguageSelector({
             {preprocess && (
               <div className="mt-2 flex flex-col gap-3">
                 {/* Preprocessing Mode Toggle */}
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950/60 rounded-xl border border-slate-900">
+                <div className="grid grid-cols-3 gap-2 p-1 bg-slate-950/60 rounded-xl border border-slate-900">
+                  <button
+                    type="button"
+                    onClick={() => onPreprocessModeChange('auto')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                      preprocessMode === 'auto'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    ✨ Auto (Best)
+                  </button>
                   <button
                     type="button"
                     onClick={() => onPreprocessModeChange('enhance')}
@@ -155,7 +231,7 @@ export default function LanguageSelector({
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    AI Smart Enhance
+                    Smart Enhance
                   </button>
                   <button
                     type="button"
@@ -170,9 +246,13 @@ export default function LanguageSelector({
                   </button>
                 </div>
 
-                {preprocessMode === 'enhance' ? (
+                {preprocessMode === 'auto' ? (
+                  <span className="text-[10px] text-emerald-400/80 bg-emerald-900/20 p-2 rounded border border-emerald-900/40">
+                    ✨ <strong>Auto Multi-Pass</strong>: Tries 3 strategies (enhance, binarize, max-contrast) and auto-picks the highest confidence result. Also detects dark backgrounds and inverts automatically.
+                  </span>
+                ) : preprocessMode === 'enhance' ? (
                   <span className="text-[10px] text-slate-500 bg-slate-900/50 p-2 rounded border border-slate-900">
-                    ℹ️ **AI Smart Enhance (Recommended)**: Keeps all texts visible, including light grey or low-contrast numbers on white card backgrounds.
+                    ℹ️ <strong>Smart Enhance</strong>: Keeps all texts visible, including light grey or low-contrast numbers on white card backgrounds.
                   </span>
                 ) : (
                   <div className="p-3 bg-slate-950/40 rounded-xl border border-slate-900 flex flex-col gap-2">
@@ -196,6 +276,20 @@ export default function LanguageSelector({
               </div>
             )}
 
+            {/* Multi-Pass OCR Info */}
+            {ocrEngine === 'tesseract' && (
+              <div className="mt-2 pt-4 border-t border-slate-800/60 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm font-semibold text-white">Multi-Pass OCR Engine</span>
+                </div>
+                <p className="text-slate-500 text-[10px] leading-relaxed">
+                  When <strong>Auto</strong> mode is active, the engine runs Tesseract with 3 different preprocessing strategies and picks the best result automatically. It also detects dark backgrounds and inverts them for optimal readability.
+                  <span className="text-emerald-400/80 font-semibold block mt-0.5">✓ 100% free — no API key required</span>
+                </p>
+              </div>
+            )}
+
             {/* Gemini Context Proofreader Toggle */}
             <div className="mt-2 pt-4 border-t border-slate-800/60 flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -211,12 +305,11 @@ export default function LanguageSelector({
                     onChange={(e) => onUseGeminiChange(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                  <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500"></div>
                 </label>
               </div>
-              <p className="text-slate-500 text-[10px] leading-relaxed">
-                Connects to Google's Gemini LLM to automatically proofread, auto-format vertical columns, and erase borders/dashed line noise (like `ณา ณาหาณะ`).
-                <span className="text-brand-300 font-semibold block mt-0.5">* Requires GEMINI_API_KEY in backend/.env file</span>
+              <p className="text-slate-500 text-[10px] leading-relaxed font-sans">
+                Connects to Google's Gemini 2.0 Flash API to proofread raw text, correct Thai/English OCR spelling mistakes, and arrange layout columns.
               </p>
             </div>
           </div>
