@@ -178,10 +178,10 @@ function reconstructLayout(lines) {
         const charW = (prev.bbox.x1 - prev.bbox.x0) / Math.max(1, prev.text.length);
         if (gap > 45 && gap > charW * 4.0) {
           lineStr += ' '.repeat(Math.min(28, Math.max(4, Math.round(gap / charW)))) + wordText;
-        } else if (gap > charW * 1.2) {
+        } else if (gap > charW * 0.6) {
           lineStr += ' ' + wordText;
         } else {
-          lineStr += gap > 2 ? ' ' + wordText : wordText;
+          lineStr += wordText;
         }
       }
     }
@@ -376,28 +376,51 @@ ${langInstruction}
 
 Begin extraction now:`;
 
-  const result = await visionModel.generateContent([
-    { text: prompt },
-    {
-      inlineData: {
-        mimeType: mimeType || 'image/png',
-        data: imageBuffer.toString('base64'),
+  try {
+    const result = await visionModel.generateContent([
+      { text: prompt },
+      {
+        inlineData: {
+          mimeType: mimeType || 'image/png',
+          data: imageBuffer.toString('base64'),
+        },
       },
-    },
-  ]);
+    ]);
 
-  let text = result.response.text();
-  // Strip any accidental markdown wrapper
-  text = text.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
-  return text;
+    let text = result.response.text();
+    text = text.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+    return text;
+  } catch (err) {
+    if (err.message.includes('429') || err.message.includes('exhausted') || err.message.includes('ResourceExhausted')) {
+      console.warn('⚠️ [Gemini OCR] gemini-2.0-flash rate limited. Trying gemini-1.5-flash fallback...');
+      try {
+        const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await fallbackModel.generateContent([
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: mimeType || 'image/png',
+              data: imageBuffer.toString('base64'),
+            },
+          },
+        ]);
+        let text = result.response.text();
+        text = text.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+        return text;
+      } catch (fallbackErr) {
+        console.error('❌ [Gemini OCR Fallback] gemini-1.5-flash also failed:', fallbackErr.message);
+        throw err;
+      }
+    }
+    throw err;
+  }
 }
 
 // ─── POST-PROCESSOR: Gemini Context Proofreader ───────────────────────────────
 async function proofreadWithGemini(text, lang) {
   if (!genAI || !text) return text;
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    const prompt = `You are an expert OCR post-processor and proofreader.
+  
+  const prompt = `You are an expert OCR post-processor and proofreader.
 The following text is the raw result from an OCR extraction of an image (languages: ${lang}).
 Your task is to fix spelling mistakes, reconstruct columns, align tabular data, and arrange the text to look as beautiful and close to the original layout as possible.
 
@@ -413,13 +436,27 @@ ${text}
 
 Proofread & Arranged Text:`;
 
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     const result = await model.generateContent(prompt);
     let out = result.response.text();
     out = out.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
     return out;
   } catch (err) {
-    console.error('[Gemini Proofread Error]:', err.message);
-    return text; // fallback to original OCR text
+    if (err.message.includes('429') || err.message.includes('exhausted') || err.message.includes('ResourceExhausted')) {
+      console.warn('⚠️ [Gemini Proofread] gemini-2.0-flash rate limited. Trying gemini-1.5-flash fallback...');
+      try {
+        const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await fallbackModel.generateContent(prompt);
+        let out = result.response.text();
+        out = out.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+        return out;
+      } catch (fallbackErr) {
+        console.error('❌ [Gemini Proofread Fallback] gemini-1.5-flash also failed:', fallbackErr.message);
+        throw err;
+      }
+    }
+    throw err;
   }
 }
 
@@ -621,9 +658,9 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
       engineUsed = `tesseract-${result.strategy}`;
     }
 
-    // Apply Gemini Context Proofreading / Formatting
+    // Apply Gemini Context Proofreading / Formatting ONLY if Gemini OCR was NOT already used!
     let isProofreadApplied = false;
-    if (useGemini && genAI) {
+    if (useGemini && genAI && engineUsed !== 'gemini-vision') {
       try {
         console.log(`[Gemini Proofreading] Restructuring lines and formatting layout...`);
         const cleanText = await proofreadWithGemini(extractedText, lang);

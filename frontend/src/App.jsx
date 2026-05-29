@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import LanguageSelector from './components/LanguageSelector';
 import DropZone from './components/DropZone';
@@ -30,6 +30,9 @@ export default function App() {
   const [useGemini, setUseGemini] = useState(true); // default true for AI Proofreader formatting
   const [imageAnalysis, setImageAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // Debounce ref for threshold slider triggers
+  const thresholdTimeoutRef = useRef(null);
 
   // Setup Global Paste Interception Listener
   useEffect(() => {
@@ -228,7 +231,12 @@ export default function App() {
   const handleThresholdChange = (val) => {
     setThresholdLevel(val);
     if (activeFile) {
-      performOCR(activeFile, selectedLanguages, { thresholdLevel: val });
+      if (thresholdTimeoutRef.current) {
+        clearTimeout(thresholdTimeoutRef.current);
+      }
+      thresholdTimeoutRef.current = setTimeout(() => {
+        performOCR(activeFile, selectedLanguages, { thresholdLevel: val });
+      }, 400);
     }
   };
 
