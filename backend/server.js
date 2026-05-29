@@ -123,6 +123,65 @@ function correctOcrText(text) {
   return corrected;
 }
 
+// Bounding-box column-gap detection to reconstruct original tabular / multi-column layout
+function reconstructLayout(lines) {
+  if (!lines || lines.length === 0) return '';
+  
+  let formattedText = '';
+  
+  for (const line of lines) {
+    // Fallback to default raw line text if word tracking isn't populated
+    if (!line.words || line.words.length === 0) {
+      formattedText += (line.text || '') + '\n';
+      continue;
+    }
+    
+    let lineStr = '';
+    
+    for (let i = 0; i < line.words.length; i++) {
+      const currentWord = line.words[i];
+      let wordText = currentWord.text || '';
+      
+      if (i === 0) {
+        lineStr += wordText;
+      } else {
+        const prevWord = line.words[i - 1];
+        
+        // Calculate horizontal positions
+        const prevX1 = prevWord.bbox.x1;
+        const currentX0 = currentWord.bbox.x0;
+        const gap = currentX0 - prevX1;
+        
+        // Calculate average character width of previous word as a scaling reference
+        const prevW = prevWord.bbox.x1 - prevWord.bbox.x0;
+        const charW = prevW / Math.max(1, prevWord.text.length);
+        
+        // Gap checks
+        if (gap > charW * 4.0) {
+          // Large horizontal gap: Represents column/table borders.
+          // Dynamically compute aligning spaces based on gap scaling factor
+          const spaceCount = Math.min(28, Math.max(4, Math.round(gap / charW)));
+          lineStr += ' '.repeat(spaceCount) + wordText;
+        } else if (gap > charW * 1.2) {
+          // Normal word spacing
+          lineStr += ' ' + wordText;
+        } else {
+          // Tight text binding (e.g. punctuation, prefixes)
+          if (gap > 2) {
+            lineStr += ' ' + wordText;
+          } else {
+            lineStr += wordText;
+          }
+        }
+      }
+    }
+    
+    formattedText += lineStr + '\n';
+  }
+  
+  return formattedText;
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -187,11 +246,13 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
       }
     );
 
-    const correctedText = correctOcrText(data.text);
+    // 6. Format layout column structures and perform autocorrect spellcheck
+    const structuredText = reconstructLayout(data.lines);
+    const correctedText = correctOcrText(structuredText);
     const duration = Date.now() - startTime;
-    console.log(`[OCR Completed] Success. Original text length: ${data.text?.length || 0}, Corrected text length: ${correctedText?.length || 0}. Confidence: ${data.confidence}%. Duration: ${duration}ms`);
+    console.log(`[OCR Completed] Success. Original text length: ${data.text?.length || 0}, Formatted text length: ${correctedText?.length || 0}. Confidence: ${data.confidence}%. Duration: ${duration}ms`);
 
-    // 6. Return standard success JSON response
+    // 7. Return standard success JSON response
     return res.json({
       success: true,
       text: correctedText,
