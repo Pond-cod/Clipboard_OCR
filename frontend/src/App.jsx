@@ -24,6 +24,9 @@ export default function App() {
   const [preprocessMode, setPreprocessMode] = useState('enhance'); // 'enhance' | 'threshold'
   const [thresholdLevel, setThresholdLevel] = useState(135);
   const [psm, setPsm] = useState('3');
+  
+  // Gemini AI proofreader state
+  const [useGemini, setUseGemini] = useState(false);
 
   // Setup Global Paste Interception Listener
   useEffect(() => {
@@ -53,7 +56,7 @@ export default function App() {
     return () => {
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [selectedLanguages, preprocess, preprocessMode, thresholdLevel, psm]); // re-bind when tuning changes
+  }, [selectedLanguages, preprocess, preprocessMode, thresholdLevel, psm, useGemini]); // re-bind when tuning changes
 
   // Generate URL preview and trigger OCR process
   const handleImageSelect = (selectedFile) => {
@@ -121,6 +124,7 @@ export default function App() {
     const activePreprocessMode = customOptions.hasOwnProperty('preprocessMode') ? customOptions.preprocessMode : preprocessMode;
     const activeThreshold = customOptions.hasOwnProperty('thresholdLevel') ? customOptions.thresholdLevel : thresholdLevel;
     const activePsm = customOptions.hasOwnProperty('psm') ? customOptions.psm : psm;
+    const activeUseGemini = customOptions.hasOwnProperty('useGemini') ? customOptions.useGemini : useGemini;
 
     const formData = new FormData();
     formData.append('image', targetFile);
@@ -129,6 +133,7 @@ export default function App() {
     formData.append('preprocessMode', activePreprocessMode);
     formData.append('thresholdLevel', activeThreshold.toString());
     formData.append('psm', activePsm);
+    formData.append('useGemini', activeUseGemini ? 'true' : 'false');
 
     try {
       const response = await fetch('http://localhost:5000/api/extract-text', {
@@ -189,6 +194,13 @@ export default function App() {
     setPsm(val);
     if (activeFile) {
       performOCR(activeFile, selectedLanguages, { psm: val });
+    }
+  };
+
+  const handleUseGeminiChange = (val) => {
+    setUseGemini(val);
+    if (activeFile) {
+      performOCR(activeFile, selectedLanguages, { useGemini: val });
     }
   };
 
@@ -285,6 +297,8 @@ export default function App() {
           onThresholdChange={handleThresholdChange}
           psm={psm}
           onPsmChange={handlePsmChange}
+          useGemini={useGemini}
+          onUseGeminiChange={handleUseGeminiChange}
         />
 
         {/* Dynamic Display Grid */}
@@ -364,7 +378,7 @@ export default function App() {
 
       {/* Persistent global keyboard tips */}
       <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 mt-8 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-[10px] gap-2">
-        <div>Smart Clipboard OCR v1.3.0 — AI Smart Enhance & Cropping active</div>
+        <div>Smart Clipboard OCR v1.4.0 — AI Smart Enhance, Cropping & Gemini Proofread active</div>
         <div className="flex items-center gap-1.5 bg-slate-900/30 px-3 py-1 rounded-full border border-slate-900/60">
           <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
           <span>Tip: paste screenshot instantly from snip-tool at any moment!</span>

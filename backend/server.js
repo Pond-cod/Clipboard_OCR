@@ -4,11 +4,22 @@ import multer from 'multer';
 import Tesseract from 'tesseract.js';
 import dotenv from 'dotenv';
 import sharp from 'sharp';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Initialize Gemini API client if API key is present in environment
+const geminiApiKey = process.env.GEMINI_API_KEY;
+let genAI = null;
+if (geminiApiKey) {
+  console.log('🤖 [Gemini AI] API Key detected. AI Auto-Correct & Proofreader helper enabled.');
+  genAI = new GoogleGenerativeAI(geminiApiKey);
+} else {
+  console.log('⚠️ [Gemini AI] No GEMINI_API_KEY in .env. Falling back to local rule-based corrector.');
+}
 
 // Enable CORS with support for development origins
 app.use(cors({
@@ -156,17 +167,17 @@ function reconstructLayout(lines) {
         const prevW = prevWord.bbox.x1 - prevWord.bbox.x0;
         const charW = prevW / Math.max(1, prevWord.text.length);
         
-        // Gap checks
-        if (gap > charW * 4.0) {
+        // Gap checks: Require at least a 45px threshold distance to consider it a column boundary.
+        // This stops close letters inside single words from being spaced out (e.g. ป ระวั ติ รายกา ร)
+        if (gap > 45 && gap > charW * 4.0) {
           // Large horizontal gap: Represents column/table borders.
-          // Dynamically compute aligning spaces based on gap scaling factor
           const spaceCount = Math.min(28, Math.max(4, Math.round(gap / charW)));
           lineStr += ' '.repeat(spaceCount) + wordText;
         } else if (gap > charW * 1.2) {
           // Normal word spacing
           lineStr += ' ' + wordText;
         } else {
-          // Tight text binding (e.g. punctuation, prefixes)
+          // Tight text binding
           if (gap > 2) {
             lineStr += ' ' + wordText;
           } else {
@@ -182,6 +193,43 @@ function reconstructLayout(lines) {
   return formattedText;
 }
 
+// Ultimate AI OCR Proofreading & Data Cleaning Helper utilizing Gemini
+async function proofreadWithGemini(text) {
+  if (!genAI) return text;
+  
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    const prompt = `
+You are an expert OCR proofreader and data cleaning assistant.
+Your task is to take raw OCR text extracted from a banking slip or financial tracker dashboard, clean it up, and make it perfectly readable.
+
+Follow these strict guidelines:
+1. Clean up and remove any garbled gibberish noise, repeating letters, or nonsense characters caused by Tesseract attempting to read decorative border lines (like dashed borders, lines, or icons, e.g., "รอ งรั บ JPG, PNG", "ณา ณาหาณะทาท-า ทา").
+2. Correct any obvious spelling typos in both Thai and English (e.g., KBank, SCB terms, "ยอดเงินคงเหลือ", "รายรับทั้งหมด", "รายจ่ายทั้งหมด", "ประวัติรายการ").
+3. Maintain the structured column or grid layout alignment of the text (keep spaces and vertical columns aligned).
+4. Do not summarize or add any conversational text. Return ONLY the cleaned, corrected, and beautifully formatted text.
+
+Raw OCR Text:
+"""
+${text}
+"""
+`;
+
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    
+    // Clean up markdown block wraps if model wraps the output in ```text ... ```
+    return responseText
+      .replace(/^```[a-zA-Z]*\n/, '')
+      .replace(/\n```$/, '')
+      .trim();
+  } catch (err) {
+    console.error('[Gemini Proofreading Error] Failed to proofread text, falling back to local text:', err);
+    return text; // Fallback to raw text
+  }
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -189,7 +237,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     services: {
       ocr: 'tesseract.js',
-      preprocessor: 'sharp'
+      preprocessor: 'sharp',
+      geminiActive: genAI !== null
     }
   });
 });
@@ -219,8 +268,9 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
     const preprocessMode = req.body.preprocessMode || 'enhance'; // 'enhance' | 'threshold'
     const thresholdLevel = req.body.thresholdLevel || '135';
     const psmMode = req.body.psm || '3'; // Default to '3' (Automatic page segmentation)
+    const doGemini = req.body.useGemini === 'true' && genAI !== null;
 
-    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes), Languages: ${lang}, Preprocess: ${doPreprocess}, Mode: ${preprocessMode}, PSM: ${psmMode}`);
+    console.log(`[OCR Request] File: ${req.file.originalname} (${req.file.size} bytes), Languages: ${lang}, Preprocess: ${doPreprocess}, Mode: ${preprocessMode}, PSM: ${psmMode}, GeminiProofread: ${doGemini}`);
 
     // 4. Select buffer to analyze (apply pre-processing pipeline if requested)
     let finalBuffer = req.file.buffer;
@@ -248,11 +298,18 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
 
     // 6. Format layout column structures and perform autocorrect spellcheck
     const structuredText = reconstructLayout(data.lines);
-    const correctedText = correctOcrText(structuredText);
+    let correctedText = correctOcrText(structuredText);
+    
+    // 7. Perform Gemini advanced AI proofreading if requested and active
+    if (doGemini) {
+      console.log(`[Gemini Proofreading] Running advanced context corrections...`);
+      correctedText = await proofreadWithGemini(correctedText);
+    }
+    
     const duration = Date.now() - startTime;
     console.log(`[OCR Completed] Success. Original text length: ${data.text?.length || 0}, Formatted text length: ${correctedText?.length || 0}. Confidence: ${data.confidence}%. Duration: ${duration}ms`);
 
-    // 7. Return standard success JSON response
+    // 8. Return standard success JSON response
     return res.json({
       success: true,
       text: correctedText,
@@ -262,8 +319,10 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
       durationMs: duration,
       tuning: {
         preprocessed: doPreprocess,
+        preprocessModeUsed: doPreprocess ? preprocessMode : null,
         thresholdUsed: doPreprocess ? thresholdLevel : null,
-        psmUsed: psmMode
+        psmUsed: psmMode,
+        geminiUsed: doGemini
       },
       metadata: {
         filename: req.file.originalname,
@@ -271,6 +330,7 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
         mimetype: req.file.mimetype,
       }
     });
+    
 
   } catch (error) {
     const duration = Date.now() - startTime;

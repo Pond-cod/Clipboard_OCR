@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, Check, Sliders, ChevronDown, ChevronUp, Zap, HelpCircle, Eye, EyeOff } from 'lucide-react';
+import { Globe, Check, Sliders, ChevronDown, ChevronUp, Zap, HelpCircle, Sparkles } from 'lucide-react';
 
 export default function LanguageSelector({
   selectedLanguages,
@@ -11,7 +11,9 @@ export default function LanguageSelector({
   thresholdLevel,
   onThresholdChange,
   psm,
-  onPsmChange
+  onPsmChange,
+  useGemini,
+  onUseGeminiChange
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -125,7 +127,6 @@ export default function LanguageSelector({
                 <span className="text-sm font-semibold text-white">AI Image Pre-Processing</span>
               </div>
               
-              {/* Custom Switch Switch */}
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
@@ -194,6 +195,30 @@ export default function LanguageSelector({
                 )}
               </div>
             )}
+
+            {/* Gemini Context Proofreader Toggle */}
+            <div className="mt-2 pt-4 border-t border-slate-800/60 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+                  <span className="text-sm font-semibold text-white">AI Context Proofreader (Gemini)</span>
+                </div>
+                
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useGemini}
+                    onChange={(e) => onUseGeminiChange(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                </label>
+              </div>
+              <p className="text-slate-500 text-[10px] leading-relaxed">
+                Connects to Google's Gemini LLM to automatically proofread, auto-format vertical columns, and erase borders/dashed line noise (like `ณา ณาหาณะ`).
+                <span className="text-brand-300 font-semibold block mt-0.5">* Requires GEMINI_API_KEY in backend/.env file</span>
+              </p>
+            </div>
           </div>
 
           {/* Col 2: Tesseract Page Segmentation Mode (PSM) */}
