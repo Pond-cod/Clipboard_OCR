@@ -90,7 +90,7 @@ async function preprocessImage(buffer, options = {}) {
   }
 }
 
-// Thai Spellcheck / Auto-Correct Dictionary for OCR slips
+// Thai Spellcheck / Auto-Correct Dictionary for OCR slips and common app text
 function correctOcrText(text) {
   if (!text) return text;
   
@@ -113,6 +113,16 @@ function correctOcrText(text) {
     { pattern: /คลิกเฟเพื่ออัปโหลด/g, replacement: 'คลิกเพื่ออัปโหลด' },
     { pattern: /ข้อมูลรายทาร/g, replacement: 'ข้อมูลรายการ' },
     { pattern: /ยังไม่มีข้อมูลรายทาร/g, replacement: 'ยังไม่มีข้อมูลรายการ' },
+    
+    // Graphic / Eraser editor common OCR errors
+    { pattern: /ขับ เค ลี่ อนด้วย/g, replacement: 'ขับเคลื่อนด้วย' },
+    { pattern: /ป ระ ะ ม ว ล ผล|ป ระ ม ว ล ผล|ป ระ  ม ว ล ผล/g, replacement: 'ประมวลผล' },
+    { pattern: /เพื่ อ\b|เพื่ อ /g, replacement: 'เพื่อ ' },
+    { pattern: /ความ แม่นยำสู งสุด|ความ แม ' นยำ สู งสุด/g, replacement: 'ความแม่นยำสูงสุด' },
+    { pattern: /พพื้นหลั งและส ร้ างสรรค์ผลงาน|พพื้นห ลังและส ร้ างสรรค์ผลงาน/g, replacement: 'ลบพื้นหลังและสร้างสรรค์ผลงาน' },
+    { pattern: /ในเสี้ ยว วินาที|ในเสี่ ย วินาที/g, replacement: 'ในเสี้ยววินาที' },
+    { pattern: /ลากโฟล์/g, replacement: 'ลากไฟล์' },
+    { pattern: /ม าวา งที่นพี|มาวางที่นพี/g, replacement: 'มาวางที่นี่' },
     
     // Grammatical fixes
     { pattern: /วันที\b|วันที /g, replacement: 'วันที่ ' },
