@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, Download, AlertTriangle, FileSpreadsheet, Hourglass, HelpCircle } from 'lucide-react';
 
-export default function ResultViewer({ text, confidence, durationMs, onTextChange, status }) {
+export default function ResultViewer({ text, confidence, durationMs, onTextChange, status, geminiFailed }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -125,6 +125,20 @@ export default function ResultViewer({ text, confidence, durationMs, onTextChang
           />
         </div>
       </div>
+
+      {/* Gemini API Quota Exhausted Fallback Warning */}
+      {geminiFailed && (
+        <div className="mt-4 p-3.5 bg-rose-500/10 border border-rose-500/25 rounded-2xl flex items-start gap-2.5 text-xs text-rose-300 animate-fade-in animate-pulse-subtle">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-rose-400" />
+          <div className="flex-1 leading-relaxed">
+            <span className="font-bold block mb-0.5 text-rose-200">⚠️ Gemini Vision API Quota Exhausted</span>
+            <span>Your Gemini Daily API Key quota has been exhausted for today (limit: 0). The system has automatically fallen back to the local, offline **Tesseract.js Multi-Pass Engine**.</span>
+            <span className="block mt-1.5 text-[10px] text-slate-400 font-semibold leading-normal">
+              💡 Tip for Tesseract: Since the image contains mostly Thai text, turn off **English** in the language selector at the top! Running in Thai-only mode prevents English character confusion (like `cD` instead of `เป๋าตัง`, or `SoU` instead of `รวม`).
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Dynamic Suggestions for Low OCR confidence */}
       {text && confidence && confidence < 78 && (

@@ -5,8 +5,30 @@ import Tesseract from 'tesseract.js';
 import dotenv from 'dotenv';
 import sharp from 'sharp';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load Royal Institute Thai Wordlist
+let thaiWordlistSet = new Set();
+try {
+  const filePath = path.join(__dirname, 'thai-wordlist.txt');
+  if (fs.existsSync(filePath)) {
+    const rawData = fs.readFileSync(filePath, 'utf-8');
+    const words = rawData.split(/\r?\n/).map(w => w.trim()).filter(w => w.length > 0);
+    thaiWordlistSet = new Set(words);
+    console.log(`📚 [ORST Dictionary] Loaded ${thaiWordlistSet.size} standard words from Royal Institute Dictionary.`);
+  } else {
+    console.warn(`⚠️ [ORST Dictionary] thai-wordlist.txt not found at ${filePath}. Spelling check disabled.`);
+  }
+} catch (err) {
+  console.error(`❌ [ORST Dictionary] Failed to load wordlist:`, err.message);
+}
 
 // ─── Gemini AI Client Setup ───────────────────────────────────────────────────
 const geminiApiKey = process.env.GEMINI_API_KEY;
@@ -220,6 +242,15 @@ function correctOcrText(text) {
     [/ผู้้/g, 'ผู้'],
     [/ค่่า/g, 'ค่า'],
     [/สลิิป/g, 'สลิป'],
+    // Tesseract Thai-English confusion corrections
+    [/cD/gi, 'เป๋าตัง'],
+    [/SoU/g, 'รวม'],
+    [/อหาท/g, 'บาท'],
+    [/ยยอด/g, 'ยอด'],
+    [/0\.00B/g, '0.00 ฿'],
+    [/J-=1/g, ''],
+    [/A,\s*\n?/gi, ''],
+    [/รายง่า ย เจ้ งหม ด|รายจ่ายเจ้ งหม ด/g, 'รายจ่ายทั้งหมด'],
     // Common split-word merging for Thai OCR
     [/ระ บบ/g, 'ระบบ'],
     [/บ ริ หาร/g, 'บริหาร'],
@@ -264,6 +295,119 @@ function correctOcrText(text) {
   t = t.replace(/([\u0E01-\u0E2E]) ([\u0E01-\u0E2E][\u0E31\u0E34-\u0E3A\u0E47-\u0E4E])/g, '$1$2');
 
   return t;
+}
+
+// ── 2A.1: ORST Dictionary Spellchecking & Correction ────────────────────────
+function getLevenshteinDistance(a, b) {
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          Math.min(
+            matrix[i][j - 1] + 1, // insertion
+            matrix[i - 1][j] + 1  // deletion
+          )
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+function findCloseDictionaryMatch(word) {
+  if (word.length <= 2 || thaiWordlistSet.size === 0) return null;
+  
+  let bestMatch = null;
+  let minDistance = 2; // only accept distance 1 or 2
+  
+  for (const dictWord of thaiWordlistSet) {
+    if (Math.abs(dictWord.length - word.length) <= 1) {
+      const dist = getLevenshteinDistance(word, dictWord);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestMatch = dictWord;
+        if (minDistance === 1) break; // found a very close match, stop searching
+      }
+    }
+  }
+  return bestMatch;
+}
+
+function checkAndVerifySpelling(text) {
+  if (!text || thaiWordlistSet.size === 0) return text;
+
+  try {
+    const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
+    const segments = Array.from(segmenter.segment(text));
+    
+    let result = '';
+    
+    for (const segment of segments) {
+      const word = segment.text;
+      const isWordType = segment.isWordLike;
+      
+      const hasThai = /[\u0E00-\u0E7F]/.test(word);
+      
+      if (isWordType && hasThai && word.length > 1) {
+        if (thaiWordlistSet.has(word)) {
+          result += word;
+        } else {
+          let correctedWord = word;
+          let foundCorrection = false;
+          
+          // Try adding standard Thai tone marks
+          const toneMarks = ['\u0E48', '\u0E49', '\u0E4A', '\u0E4B'];
+          for (const tone of toneMarks) {
+            const candidate1 = word + tone;
+            if (thaiWordlistSet.has(candidate1)) {
+              correctedWord = candidate1;
+              foundCorrection = true;
+              break;
+            }
+          }
+          
+          if (!foundCorrection) {
+            if (word.includes('ำ')) {
+              const candidate = word.replace(/ำ/g, 'า');
+              if (thaiWordlistSet.has(candidate)) {
+                correctedWord = candidate;
+                foundCorrection = true;
+              }
+            } else if (word.includes('า')) {
+              const candidate = word.replace(/า/g, 'ำ');
+              if (thaiWordlistSet.has(candidate)) {
+                correctedWord = candidate;
+                foundCorrection = true;
+              }
+            }
+          }
+
+          if (!foundCorrection) {
+            const closeMatch = findCloseDictionaryMatch(word);
+            if (closeMatch) {
+              correctedWord = closeMatch;
+              foundCorrection = true;
+            }
+          }
+          
+          result += correctedWord;
+        }
+      } else {
+        result += word;
+      }
+    }
+    
+    return result;
+  } catch (err) {
+    console.error('[ORST Spelling Checker Error]:', err.message);
+    return text;
+  }
 }
 
 // ── 2B: Remove Noise Lines ───────────────────────────────────────────────────
@@ -339,6 +483,11 @@ function postProcessText(rawLayoutText) {
 
   // Step 3: Smart formatting
   text = formatExtractedText(text);
+
+  // Step 4: Verify against official ORST Dictionary
+  if (thaiWordlistSet.size > 0) {
+    text = checkAndVerifySpelling(text);
+  }
 
   return text;
 }
@@ -698,6 +847,7 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
         strategyUsed: strategy,
         ocrEngineUsed: ocrEngine,
         geminiProofreadUsed: isProofreadApplied,
+        geminiFailedFallback: shouldRunGemini && engineUsed !== 'gemini-vision'
       },
       metadata: {
         filename: req.file.originalname,

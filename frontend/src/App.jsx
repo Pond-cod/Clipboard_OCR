@@ -30,6 +30,7 @@ export default function App() {
   const [useGemini, setUseGemini] = useState(true); // default true for AI Proofreader formatting
   const [imageAnalysis, setImageAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [geminiFailed, setGeminiFailed] = useState(false);
 
   // Debounce ref for threshold slider triggers
   const thresholdTimeoutRef = useRef(null);
@@ -192,6 +193,7 @@ export default function App() {
       setOcrText(data.text || '');
       setConfidence(data.confidence || 0);
       setDurationMs(data.durationMs || 0);
+      setGeminiFailed(!!data.tuning?.geminiFailedFallback);
       if (data.imageAnalysis) {
         setImageAnalysis(data.imageAnalysis);
       }
@@ -273,6 +275,7 @@ export default function App() {
     setConfidence(null);
     setDurationMs(null);
     setErrorMessage('');
+    setGeminiFailed(false);
     setImageAnalysis(null);
     setStatus('idle');
   };
@@ -430,6 +433,7 @@ export default function App() {
                     durationMs={durationMs}
                     onTextChange={handleTextChange}
                     status={status}
+                    geminiFailed={geminiFailed}
                   />
                 )}
               </div>
